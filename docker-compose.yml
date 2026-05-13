@@ -1,0 +1,92 @@
+version: '3.9'
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-yuksar_db}
+      POSTGRES_USER: ${POSTGRES_USER:-yuksar_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yuksar_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  # ── Django Backend ────────────────────────────────────────────
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-yuksar_user}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-yuksar_db}
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ALLOWED_HOSTS: yuksar.pizzacentergarden.uz,localhost,127.0.0.1
+      FRONTEND_URL: https://yuksar.pizzacentergarden.uz
+    volumes:
+      - media_files:/app/media
+      - static_files:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: >
+      sh -c "python manage.py migrate --no-input &&
+             python manage.py collectstatic --no-input &&
+             gunicorn erp.wsgi:application
+               --bind 0.0.0.0:8000
+               --workers 3
+               --timeout 120
+               --access-logfile -"
+    expose:
+      - "8000"
+
+  # ── Celery Worker ─────────────────────────────────────────────
+  celery:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-yuksar_user}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-yuksar_db}
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      - media_files:/app/media
+    depends_on:
+      - backend
+      - redis
+    command: celery -A erp worker -l info
+
+  # ── Frontend (Nginx + React build) ────────────────────────────
+  frontend:
+    image: marimovdev/yuksar-frontend:latest   # docker build & push from frontend repo
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    volumes:
+      - static_files:/app/staticfiles:ro
+      - media_files:/app/media:ro
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_files:
+  static_files:

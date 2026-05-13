@@ -27,10 +27,13 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-yky@u@f5gv-c!97cg5bpb
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='penaplast.api.yolyolakayt.uz,localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='yuksar.pizzacentergarden.uz,localhost,127.0.0.1'
+).split(',')
 
 # Frontend URL for connection reference
-FRONTEND_URL = config('FRONTEND_URL', default="https://penaplast-crm.vercel.app")
+FRONTEND_URL = config('FRONTEND_URL', default="https://yuksar.pizzacentergarden.uz")
 
 # Security settings for production
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -211,17 +214,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'accounts.User'
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
-    "https://penaplast-crm.vercel.app",
+    "https://yuksar.pizzacentergarden.uz",
+    "http://yuksar.pizzacentergarden.uz",
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://penaplast-crm.vercel.app",
-    "https://penaplast.api.yolyolakayt.uz",
+    "https://yuksar.pizzacentergarden.uz",
+    "http://yuksar.pizzacentergarden.uz",
 ]
 
 # DRF
