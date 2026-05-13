@@ -46,6 +46,7 @@ class CustomerViewSet(NoDeleteMixin, viewsets.ModelViewSet):
 class InvoiceViewSet(NoDeleteMixin, viewsets.ModelViewSet):
     queryset = Invoice.objects.all().order_by('-date')
     serializer_class = InvoiceSerializer
+    filterset_fields = ['customer', 'status', 'payment_method']
 
     def get_permissions(self):
         return [IsAdminOrSalesManager()]

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Driver, TransportContract, Waybill, Trip, DriverPayment, FuelLog
+from .models import Driver, TransportContract, Waybill, Trip, DriverPayment, FuelLog, Vehicle
 
 class DriverSerializer(serializers.ModelSerializer):
     class Meta:
@@ -40,4 +40,12 @@ class DriverPaymentSerializer(serializers.ModelSerializer):
 class FuelLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = FuelLog
+        fields = '__all__'
+
+
+class VehicleSerializer(serializers.ModelSerializer):
+    driver_name = serializers.ReadOnlyField(source='driver.full_name')
+
+    class Meta:
+        model = Vehicle
         fields = '__all__'

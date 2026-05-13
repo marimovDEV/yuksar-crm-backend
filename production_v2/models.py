@@ -128,7 +128,7 @@ class BunkerLoad(models.Model):
 
 class BlockProduction(models.Model):
     STATUS_CHOICES = (
-        ('DRYING', 'Quritilmoqda'),
+        ('COOLING', 'Sovutilmoqda'),
         ('READY', 'Tayyor'),
         ('DEFECT', 'Brak'),
         ('RESERVED', 'Band qilingan'),
@@ -149,20 +149,79 @@ class BlockProduction(models.Model):
     volume = models.DecimalField(max_digits=18, decimal_places=4, default=0, help_text="Total volume in m3")
     weight_per_block = models.DecimalField(max_digits=18, decimal_places=3, default=0, help_text="kg")
     
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='DRYING')
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='COOLING')
     warehouse = models.ForeignKey('warehouse_v2.Warehouse', on_delete=models.SET_NULL, null=True, blank=True)
     
+    operator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='produced_blocks')
+    shift = models.CharField(max_length=20, choices=(('DAY', 'Kunlik'), ('NIGHT', 'Tungi')), default='DAY')
     date = models.DateField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
         from decimal import Decimal
-        # Auto-calculate volume if not set: (L * W * H / 10^9) * count
         if not self.volume:
             self.volume = (Decimal(str(self.length)) * Decimal(str(self.width)) * Decimal(str(self.height)) / Decimal('1e9')) * Decimal(str(self.block_count))
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Batch {self.id} | {self.block_count} blocks | {self.density} kg/m3"
+        return f"Lot {self.id} | {self.block_count} blocks | {self.density} kg/m3"
+
+class FinishedBlock(models.Model):
+    CLASSIFICATION_CHOICES = (
+        ('A_CLASS', 'A-Class (Premium)'),
+        ('B_CLASS', 'B-Class (Standard)'),
+        ('C_CLASS', 'C-Class (Economic)'),
+        ('REJECT', 'Reject (Brak)'),
+    )
+    
+    STATUS_CHOICES = (
+        ('COOLING', 'Sovutilmoqda'),
+        ('QC_PENDING', 'Sifat nazoratida'),
+        ('READY', 'Sotuvga tayyor'),
+        ('RESERVED', 'Band qilingan'),
+        ('SOLD', 'Sotilgan'),
+        ('RECYCLE', 'Qayta ishlashga'),
+    )
+
+    block_id = models.CharField(max_length=50, unique=True) # BLK-2026-000001
+    lot = models.ForeignKey(BlockProduction, on_delete=models.CASCADE, related_name='individual_blocks')
+    
+    # Passport Data
+    classification = models.CharField(max_length=20, choices=CLASSIFICATION_CHOICES, default='B_CLASS')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='COOLING')
+    
+    # Physicals
+    actual_weight = models.FloatField(null=True, blank=True)
+    actual_density = models.FloatField(null=True, blank=True)
+    moisture = models.FloatField(null=True, blank=True, help_text="%")
+    
+    # Precise dimensions (can deviate from lot standard)
+    length = models.FloatField(null=True, blank=True, help_text="mm")
+    width = models.FloatField(null=True, blank=True, help_text="mm")
+    height = models.FloatField(null=True, blank=True, help_text="mm")
+    
+    visual_defects = models.TextField(blank=True, help_text="Visual defects description or tags")
+    
+    # Location
+    warehouse = models.ForeignKey('warehouse_v2.Warehouse', on_delete=models.SET_NULL, null=True, blank=True)
+    zone = models.CharField(max_length=50, blank=True)
+    rack = models.CharField(max_length=50, blank=True)
+    
+    qr_code_data = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.block_id} ({self.classification})"
+
+class BlockTimeline(models.Model):
+    block = models.ForeignKey(FinishedBlock, on_delete=models.CASCADE, related_name='timeline')
+    status = models.CharField(max_length=50)
+    notes = models.TextField(blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.block.block_id} -> {self.status} at {self.timestamp}"
 
 class DryingProcess(models.Model):
     block_production = models.ForeignKey(BlockProduction, on_delete=models.CASCADE, related_name='drying_processes')
@@ -267,6 +326,16 @@ class ProductionOrderStage(StateMachineMixin, models.Model):
     
     # Optional link to concrete entity if applicable (e.g. Zames instance)
     related_id = models.IntegerField(null=True, blank=True, help_text="ID of the related entity like Zames object")
+    
+    # MES tracking
+    shift = models.CharField(max_length=20, choices=(('DAY', 'Kunlik'), ('NIGHT', 'Tungi')), default='DAY')
+    machine_status = models.CharField(max_length=20, choices=(
+        ('ACTIVE', 'Aktiv'),
+        ('MAINTENANCE', 'Texnik xizmat'),
+        ('OFFLINE', 'O\'f-line'),
+    ), default='ACTIVE')
+    
+    notes = models.TextField(blank=True)
 
     def __str__(self):
         return f"{self.order.order_number} - {self.get_stage_type_display()} ({self.status})"
@@ -310,6 +379,11 @@ class QualityCheck(models.Model):
     
     inspector = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Extended QC
+    failure_reason = models.CharField(max_length=100, blank=True, help_text="Density error, Size error, etc.")
+    is_recycleable = models.BooleanField(default=True)
+    photo = models.ImageField(upload_to='qc_photos/', null=True, blank=True)
 
     def __str__(self):
         return f"QC for {self.order.order_number}: {self.status}"

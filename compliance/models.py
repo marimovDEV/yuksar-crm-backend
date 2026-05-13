@@ -102,3 +102,34 @@ class ComplianceViolation(models.Model):
 
     def __str__(self):
         return f"Violation: {self.rule.name} - {self.created_at.date()}"
+
+
+class AttendanceRecord(models.Model):
+    STATUS_CHOICES = (
+        ('PRESENT', 'Keldi'),
+        ('ABSENT', 'Kelmadi'),
+        ('LATE', 'Kech keldi'),
+        ('HALF_DAY', 'Yarim kun'),
+        ('REMOTE', 'Masofaviy'),
+    )
+
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='attendance_records'
+    )
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PRESENT')
+    check_in = models.TimeField(null=True, blank=True)
+    check_out = models.TimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='recorded_attendances'
+    )
+
+    class Meta:
+        unique_together = ('employee', 'date')
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.employee} — {self.date} ({self.status})"

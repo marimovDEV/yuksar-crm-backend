@@ -1,9 +1,11 @@
+from decimal import Decimal
 from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Sum
 from warehouse_v2.models import Stock, RawMaterialBatch
-from sales_v2.models import SaleItem, Customer
-from finance_v2.models import ClientBalance
+from sales_v2.models import SaleItem, Customer, Invoice
+from finance_v2.models import ClientBalance, FinancialTransaction
+from production_v2.models import ProductionOrder, BlockProduction
 
 def get_supply_chain_heuristics():
     """
@@ -41,8 +43,8 @@ def get_cash_gap_prediction():
     total_receivables = ClientBalance.objects.aggregate(s=Sum('total_debt'))['s'] or 0
     overdue = ClientBalance.objects.aggregate(s=Sum('overdue_debt'))['s'] or 0
     
-    projected_inflow = float(total_receivables - overdue) * 0.4
-    risk_level = 'HIGH' if overdue > (total_receivables * 0.4) else 'MEDIUM'
+    projected_inflow = (total_receivables - overdue) * Decimal('0.4')
+    risk_level = 'HIGH' if overdue > (total_receivables * Decimal('0.4')) else 'MEDIUM'
     
     return {
         'total_receivables': float(total_receivables),
@@ -51,6 +53,80 @@ def get_cash_gap_prediction():
         'risk_level': risk_level,
         'action_label': 'Qarzni so\'rash' if risk_level == 'HIGH' else 'Ko\'rish',
         'message': "Debitorlik qarzi yuqori! Likvidlik riskini kamaytirish uchun to'lovlarni undirish kerak." if risk_level == 'HIGH' else "Likvidlik barqaror."
+    }
+
+def get_business_health_score():
+    """
+    Calculates a 0-100 score based on:
+    - Debt Ratio (30%)
+    - Production Efficiency (40%)
+    - Sales Growth (30%)
+    """
+    # 1. Debt Health
+    total_debt = ClientBalance.objects.aggregate(s=Sum('total_debt'))['s'] or 0
+    overdue = ClientBalance.objects.aggregate(s=Sum('overdue_debt'))['s'] or 0
+    debt_score = 100 - (min(100, int((overdue / total_debt * 100))) if total_debt > 0 else 0)
+    
+    # 2. Production Efficiency (Mocked from OEE logic)
+    today = timezone.now().date()
+    today_plan = ProductionOrder.objects.filter(created_at__date=today).aggregate(s=Sum('quantity'))['s'] or 100
+    today_prod = BlockProduction.objects.filter(date=today).aggregate(s=Sum('block_count'))['total'] or 0
+    prod_score = min(100, int((today_prod / today_plan) * 100)) if today_plan > 0 else 90
+    
+    # 3. Growth (This month vs Last month revenue)
+    this_month = timezone.now().month
+    last_month = (timezone.now() - timedelta(days=30)).month
+    tm_rev = Invoice.objects.filter(date__month=this_month, status__in=['CONFIRMED', 'DELIVERED', 'COMPLETED']).aggregate(s=Sum('total_amount'))['s'] or 1
+    lm_rev = Invoice.objects.filter(date__month=last_month, status__in=['CONFIRMED', 'DELIVERED', 'COMPLETED']).aggregate(s=Sum('total_amount'))['s'] or 1
+    growth_score = min(100, int((tm_rev / lm_rev) * 100))
+    
+    final_score = int((debt_score * 0.3) + (prod_score * 0.4) + (growth_score * 0.3))
+    
+    status = "Stable Growth"
+    if final_score > 90: status = "Excellent"
+    elif final_score < 60: status = "Critical"
+    elif final_score < 80: status = "Warning"
+    
+    return {
+        'score': final_score,
+        'status': status,
+        'debt_health': debt_score,
+        'prod_health': prod_score,
+        'growth_health': growth_score
+    }
+
+def get_sales_funnel_metrics():
+    """
+    Aggregates the sales pipeline stages.
+    """
+    leads = Customer.objects.filter(lead_status='LEAD').count()
+    negotiations = Customer.objects.filter(lead_status='NEGOTIATION').count()
+    orders = Invoice.objects.filter(status__in=['NEW', 'CONFIRMED', 'IN_PRODUCTION', 'READY']).count()
+    delivered = Invoice.objects.filter(status__in=['SHIPPED', 'EN_ROUTE', 'DELIVERED', 'COMPLETED']).count()
+    
+    return [
+        {'label': 'Leads', 'value': leads, 'color': 'blue'},
+        {'label': 'Deals', 'value': negotiations, 'color': 'indigo'},
+        {'label': 'Orders', 'value': orders, 'color': 'violet'},
+        {'label': 'Delivered', 'value': delivered, 'color': 'emerald'},
+    ]
+
+def get_cashflow_forecast():
+    """
+    Provides a 30-day cashflow prediction.
+    """
+    total_receivables = ClientBalance.objects.aggregate(s=Sum('total_debt'))['s'] or 0
+    # Average expenses from last 30 days
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    avg_expense = FinancialTransaction.objects.filter(type='EXPENSE', created_at__gte=thirty_days_ago).aggregate(s=Sum('amount'))['s'] or 0
+    
+    forecasted_balance = total_receivables - avg_expense
+    
+    return {
+        'receivables': float(total_receivables),
+        'expected_expenses': float(avg_expense),
+        'forecast_30d': float(forecasted_balance),
+        'status': 'HEALTHY' if forecasted_balance > 0 else 'RISK'
     }
 
 def get_top_business_metrics():

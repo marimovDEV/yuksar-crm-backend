@@ -1,11 +1,34 @@
+from decimal import Decimal
 from rest_framework import serializers
 from django.db import transaction
-from .models import Supplier, Material, RawMaterialBatch, Warehouse, Stock, WarehouseTransfer
+from .models import (
+    Supplier, Material, RawMaterialBatch, Warehouse, Stock, 
+    WarehouseTransfer, PurchaseOrder, PurchaseOrderItem
+)
 from inventory.services import update_inventory
 
 class SupplierSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
     class Meta:
         model = Supplier
+        fields = '__all__'
+
+class PurchaseOrderItemSerializer(serializers.ModelSerializer):
+    material_name = serializers.ReadOnlyField(source='material.name')
+    material_unit = serializers.ReadOnlyField(source='material.unit')
+    
+    class Meta:
+        model = PurchaseOrderItem
+        fields = '__all__'
+
+class PurchaseOrderSerializer(serializers.ModelSerializer):
+    items = PurchaseOrderItemSerializer(many=True, read_only=True)
+    supplier_name = serializers.ReadOnlyField(source='supplier.name')
+    created_by_name = serializers.ReadOnlyField(source='created_by.full_name')
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = PurchaseOrder
         fields = '__all__'
 
 class MaterialSerializer(serializers.ModelSerializer):
@@ -77,37 +100,42 @@ class StockSerializer(serializers.ModelSerializer):
     def get_status(self, obj):
         if obj.quantity <= obj.min_level:
             return 'CRITICAL'
-        if obj.quantity <= obj.min_level * 1.5:
+        if obj.quantity <= obj.min_level * Decimal('1.5'):
             return 'LOW'
         return 'OK'
 
 class WarehouseTransferSerializer(serializers.ModelSerializer):
     material_name = serializers.ReadOnlyField(source='material.name')
+    material_sku = serializers.ReadOnlyField(source='material.sku')
+    material_unit = serializers.ReadOnlyField(source='material.unit')
     from_warehouse_name = serializers.ReadOnlyField(source='from_warehouse.name')
     to_warehouse_name = serializers.ReadOnlyField(source='to_warehouse.name')
+    batch_number = serializers.ReadOnlyField(source='batch.batch_number')
+    
+    created_by_name = serializers.ReadOnlyField(source='created_by.full_name')
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    transfer_type_display = serializers.CharField(source='get_transfer_type_display', read_only=True)
 
     class Meta:
         model = WarehouseTransfer
         fields = '__all__'
 
+    def validate(self, data):
+        # Validation for Stock (Industrial Requirement)
+        from_wh = data.get('from_warehouse')
+        material = data.get('material')
+        qty = data.get('quantity')
+        
+        if from_wh and material and qty:
+            stock = Stock.objects.filter(warehouse=from_wh, material=material).first()
+            current_qty = stock.quantity if stock else 0
+            if current_qty < qty:
+                raise serializers.ValidationError({
+                    "quantity": f"Omborda yetarli qoldiq yo'q. Mavjud: {current_qty} {material.unit}"
+                })
+        return data
+
     def create(self, validated_data):
-        with transaction.atomic():
-            instance = super().create(validated_data)
-            # Enterprise Update: Atomic Transfer via Service Layer
-            # 1. Decrease from source
-            update_inventory(
-                product=instance.material,
-                warehouse=instance.from_warehouse,
-                qty=-instance.quantity,
-                user=instance.approved_by,
-                reference=f"TRANSFER-OUT-{instance.id}"
-            )
-            # 2. Increase in destination
-            update_inventory(
-                product=instance.material,
-                warehouse=instance.to_warehouse,
-                qty=instance.quantity,
-                user=instance.approved_by,
-                reference=f"TRANSFER-IN-{instance.id}"
-            )
-            return instance
+        # In Industrial WMS, creation doesn't impact stock immediately.
+        # It only creates a PENDING request.
+        return super().create(validated_data)

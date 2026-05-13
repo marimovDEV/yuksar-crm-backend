@@ -114,6 +114,30 @@ class AccountViewSet(viewsets.ModelViewSet):
             'tax_rates_created': tax_count,
         })
 
+    @action(detail=False, methods=['get'])
+    def ledger_by_code(self, request):
+        """Account ledger by code lookup."""
+        code = request.query_params.get('code')
+        if not code:
+            return Response({'error': 'Code required'}, status=400)
+        
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        from datetime import date as date_cls
+        s = None
+        e = None
+        if start_date:
+            try: s = date_cls.fromisoformat(start_date)
+            except ValueError: pass
+        if end_date:
+            try: e = date_cls.fromisoformat(end_date)
+            except ValueError: pass
+
+        ledger = get_account_ledger(code, start_date=s, end_date=e)
+        return Response(ledger)
+
+
 
 class JournalEntryViewSet(viewsets.ModelViewSet):
     """
@@ -134,13 +158,22 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Create a journal entry with lines."""
-        serializer = JournalEntryCreateSerializer(data=request.data)
+        data = request.data.copy()
+        if 'lines_json' in data:
+            import json
+            try:
+                data['lines'] = json.loads(data['lines_json'])
+            except json.JSONDecodeError:
+                return Response({'error': 'Invalid lines_json format'}, status=400)
+
+        serializer = JournalEntryCreateSerializer(data=data)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
+        validated_data = serializer.validated_data
 
         try:
             entry = create_journal_entry(
-                description=data['description'],
+                description=validated_data['description'],
+                attachment=validated_data.get('attachment'),
                 lines=[{
                     'account_code': l.get('account_code'),
                     'account_id': l.get('account_id'),

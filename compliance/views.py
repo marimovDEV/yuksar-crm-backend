@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 from accounts.permissions import IsAdmin
-from .models import LegalDocument, ComplianceRule, ComplianceViolation
+from .models import LegalDocument, ComplianceRule, ComplianceViolation, AttendanceRecord
 from .serializers import LegalDocumentSerializer, ComplianceRuleSerializer, ComplianceViolationSerializer
 from django.utils import timezone
 
@@ -52,3 +52,28 @@ class ComplianceViolationViewSet(viewsets.ModelViewSet):
         violation.resolution_note = request.data.get('note', '')
         violation.save()
         return Response(self.get_serializer(violation).data)
+
+
+from rest_framework import serializers as drf_serializers
+
+class AttendanceSerializer(drf_serializers.ModelSerializer):
+    employee_name = drf_serializers.SerializerMethodField()
+
+    class Meta:
+        model = AttendanceRecord
+        fields = '__all__'
+        read_only_fields = ('recorded_by',)
+
+    def get_employee_name(self, obj):
+        return obj.employee.full_name or obj.employee.username
+
+
+class AttendanceViewSet(viewsets.ModelViewSet):
+    queryset = AttendanceRecord.objects.select_related('employee').all()
+    serializer_class = AttendanceSerializer
+    permission_classes = [IsAdmin]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['employee', 'date', 'status']
+
+    def perform_create(self, serializer):
+        serializer.save(recorded_by=self.request.user)

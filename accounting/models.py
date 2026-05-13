@@ -287,6 +287,13 @@ class JournalEntry(models.Model):
         default=0,
         help_text="Umumiy summa (informational)"
     )
+    attachment = models.FileField(
+        upload_to='accounting/attachments/',
+        null=True,
+        blank=True,
+        help_text="Tasdiqlovchi hujjat (PDF, rasm)"
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

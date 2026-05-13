@@ -1,10 +1,10 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Driver, TransportContract, Waybill, Trip, DriverPayment, FuelLog
+from .models import Driver, TransportContract, Waybill, Trip, DriverPayment, FuelLog, Vehicle
 from .serializers import (
     DriverSerializer, TransportContractSerializer, WaybillSerializer,
-    TripSerializer, DriverPaymentSerializer, FuelLogSerializer
+    TripSerializer, DriverPaymentSerializer, FuelLogSerializer, VehicleSerializer
 )
 from .services import start_trip, complete_trip
 
@@ -45,3 +45,8 @@ class DriverPaymentViewSet(viewsets.ReadOnlyModelViewSet):
 class FuelLogViewSet(viewsets.ModelViewSet):
     queryset = FuelLog.objects.all()
     serializer_class = FuelLogSerializer
+
+
+class VehicleViewSet(viewsets.ModelViewSet):
+    queryset = Vehicle.objects.all().order_by('-created_at')
+    serializer_class = VehicleSerializer

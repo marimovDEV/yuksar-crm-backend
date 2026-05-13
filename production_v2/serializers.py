@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from .models import (
-    Zames, Bunker, BunkerLoad, BlockProduction, 
+    Zames, Bunker, BunkerLoad, BlockProduction,
     DryingProcess, Recipe, RecipeItem, ZamesItem,
-    ProductionOrder, ProductionOrderStage, ProductionPlan, QualityCheck
+    ProductionOrder, ProductionOrderStage, ProductionPlan, QualityCheck,
+    ProductionBatch, FinishedBlock, BlockTimeline
 )
 from warehouse_v2.serializers import MaterialSerializer
 
@@ -127,8 +128,33 @@ class BunkerLoadSerializer(serializers.ModelSerializer):
         model = BunkerLoad
         fields = '__all__'
 
+class BlockTimelineSerializer(serializers.ModelSerializer):
+    user_name = serializers.ReadOnlyField(source='user.username')
+    
+    class Meta:
+        model = BlockTimeline
+        fields = '__all__'
+
+class FinishedBlockSerializer(serializers.ModelSerializer):
+    timeline = BlockTimelineSerializer(many=True, read_only=True)
+    classification_display = serializers.CharField(source='get_classification_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    warehouse_name = serializers.ReadOnlyField(source='warehouse.name')
+    
+    # Metadata from lot
+    recipe_name = serializers.ReadOnlyField(source='lot.zames.recipe.name')
+    operator_name = serializers.ReadOnlyField(source='lot.operator.username')
+    shift_display = serializers.ReadOnlyField(source='lot.get_shift_display')
+    produced_date = serializers.ReadOnlyField(source='lot.date')
+    
+    class Meta:
+        model = FinishedBlock
+        fields = '__all__'
+
 class BlockProductionSerializer(serializers.ModelSerializer):
     zames_number = serializers.ReadOnlyField(source='zames.zames_number')
+    operator_name = serializers.ReadOnlyField(source='operator.username')
+    shift_display = serializers.CharField(source='get_shift_display', read_only=True)
 
     class Meta:
         model = BlockProduction
@@ -140,6 +166,22 @@ class DryingProcessSerializer(serializers.ModelSerializer):
     class Meta:
         model = DryingProcess
         fields = '__all__'
+
+class QualityCheckSerializer(serializers.ModelSerializer):
+    inspector_name = serializers.ReadOnlyField(source='inspector.username')
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    order_number = serializers.ReadOnlyField(source='order.order_number')
+    photo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = QualityCheck
+        fields = '__all__'
+
+    def get_photo_url(self, obj):
+        if obj.photo:
+            return obj.photo.url
+        return None
+
 class ProductionOrderStageSerializer(serializers.ModelSerializer):
     stage_type_display = serializers.CharField(source='get_stage_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -151,13 +193,30 @@ class ProductionOrderStageSerializer(serializers.ModelSerializer):
 
 class ProductionOrderSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')
+    product_sku = serializers.ReadOnlyField(source='product.sku')
     stages = ProductionOrderStageSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     responsible_name = serializers.ReadOnlyField(source='responsible.username')
+    quality_checks = QualityCheckSerializer(many=True, read_only=True)
+    
+    # Timeline
+    action_logs = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductionOrder
         fields = '__all__'
+
+    def get_action_logs(self, obj):
+        from .models import StageActionLog
+        logs = StageActionLog.objects.filter(order=obj).order_by('-timestamp')
+        return [{
+            'id': log.id,
+            'action': log.action,
+            'stage': log.stage_type,
+            'user': log.user.username if log.user else 'System',
+            'timestamp': log.timestamp,
+            'notes': log.notes
+        } for log in logs]
 
 class ProductionPlanSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -168,11 +227,7 @@ class ProductionPlanSerializer(serializers.ModelSerializer):
         model = ProductionPlan
         fields = '__all__'
 
-class QualityCheckSerializer(serializers.ModelSerializer):
-    inspector_name = serializers.ReadOnlyField(source='inspector.username')
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
-    order_number = serializers.ReadOnlyField(source='order.order_number')
-
+class ProductionBatchSerializer(serializers.ModelSerializer):
     class Meta:
-        model = QualityCheck
-        fields = '__all__'
+        model = ProductionBatch
+        fields = "__all__"

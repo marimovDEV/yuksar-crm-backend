@@ -116,6 +116,38 @@ class DriverPayment(models.Model):
     def __str__(self):
         return f"Payment {self.id} | {self.driver.full_name} | {self.amount}"
 
+class Vehicle(models.Model):
+    TYPE_CHOICES = (
+        ('TRUCK', 'Yuk mashinasi'),
+        ('VAN', 'Mikroavtobus'),
+        ('CAR', 'Avtomobil'),
+        ('LOADER', 'Yuk ko\'taruvchi'),
+    )
+    STATUS_CHOICES = (
+        ('ACTIVE', 'Faol'),
+        ('MAINTENANCE', 'Ta\'mirda'),
+        ('INACTIVE', 'Nofaol'),
+    )
+
+    plate = models.CharField(max_length=20, unique=True, verbose_name='Davlat raqami')
+    vehicle_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='TRUCK')
+    brand = models.CharField(max_length=100, blank=True)
+    model = models.CharField(max_length=100, blank=True)
+    year = models.IntegerField(null=True, blank=True)
+    capacity_kg = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Yuk ko\'tarish qobiliyati (kg)')
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='ACTIVE')
+    driver = models.ForeignKey(Driver, on_delete=models.SET_NULL, null=True, blank=True, related_name='vehicles')
+    mileage_km = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.plate} ({self.vehicle_type})"
+
+    class Meta:
+        ordering = ['-created_at']
+
+
 class FuelLog(models.Model):
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='fuel_logs')
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='fuel_logs')

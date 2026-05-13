@@ -5,13 +5,15 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import (
-    Zames, Bunker, BunkerLoad, BlockProduction, 
-    DryingProcess, Recipe, ProductionOrder, ProductionOrderStage, ProductionPlan, QualityCheck
+    Zames, Bunker, BunkerLoad, BlockProduction,
+    DryingProcess, Recipe, ProductionOrder, ProductionOrderStage, ProductionPlan, QualityCheck,
+    ProductionBatch, FinishedBlock, BlockTimeline
 )
 from .serializers import (
     ZamesSerializer, BunkerSerializer, BunkerLoadSerializer,
-    BlockProductionSerializer, DryingProcessSerializer, 
-    RecipeSerializer, ProductionOrderSerializer, ProductionPlanSerializer, QualityCheckSerializer
+    BlockProductionSerializer, DryingProcessSerializer,
+    RecipeSerializer, ProductionOrderSerializer, ProductionPlanSerializer, QualityCheckSerializer,
+    ProductionBatchSerializer, FinishedBlockSerializer, BlockTimelineSerializer
 )
 from accounts.permissions import IsAdmin, IsProductionOperator, IsProductionRelated, get_user_role_name
 from .services import (
@@ -20,7 +22,7 @@ from .services import (
     transition_to_next_stage, assign_task_to_operator,
     calculate_plan_material_needs, start_plan, complete_plan,
     perform_quality_check, start_production_stage, fail_production_stage, force_release_bunker,
-    force_complete_stage, reset_stage_to_pending
+    force_complete_stage, reset_stage_to_pending, perform_block_qc
 )
 
 class RecipeViewSet(viewsets.ModelViewSet):
@@ -99,7 +101,8 @@ class BunkerViewSet(viewsets.ModelViewSet):
                     width=width,
                     height=height,
                     density=density,
-                    user=request.user
+                    user=request.user,
+                    shift=request.data.get('shift', 'DAY')
                 )
                 bunker.is_occupied = False
                 bunker.save()
@@ -375,3 +378,58 @@ class QualityCheckViewSet(viewsets.ModelViewSet):
     queryset = QualityCheck.objects.all().order_by('-created_at')
     serializer_class = QualityCheckSerializer
     permission_classes = [IsProductionRelated]
+    filterset_fields = ['order', 'status', 'inspector']
+
+
+class ProductionBatchViewSet(viewsets.ModelViewSet):
+    queryset = ProductionBatch.objects.all().order_by('-start_time')
+    serializer_class = ProductionBatchSerializer
+    permission_classes = [IsProductionRelated]
+
+class FinishedBlockViewSet(viewsets.ModelViewSet):
+    queryset = FinishedBlock.objects.all().order_by('-created_at')
+    serializer_class = FinishedBlockSerializer
+    permission_classes = [IsProductionOperator]
+    filterset_fields = ['lot', 'status', 'classification', 'block_id']
+
+    @action(detail=True, methods=['post'], url_path='perform-qc')
+    def perform_qc(self, request, pk=None):
+        classification = request.data.get('classification')
+        status_val = request.data.get('status')
+        notes = request.data.get('notes', '')
+        actual_weight = request.data.get('actual_weight')
+        actual_density = request.data.get('actual_density')
+        moisture = request.data.get('moisture')
+        length = request.data.get('length')
+        width = request.data.get('width')
+        height = request.data.get('height')
+        visual_defects = request.data.get('visual_defects', '')
+
+        if not classification or not status_val:
+            return Response({'error': 'classification and status are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            block = perform_block_qc(
+                block_id=pk,
+                classification=classification,
+                status=status_val,
+                notes=notes,
+                actual_weight=actual_weight,
+                actual_density=actual_density,
+                moisture=moisture,
+                length=length,
+                width=width,
+                height=height,
+                visual_defects=visual_defects,
+                user=request.user
+            )
+            return Response(FinishedBlockSerializer(block).data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='by-id/(?P<block_id>[^/.]+)')
+    def by_block_id(self, request, block_id=None):
+        block = FinishedBlock.objects.filter(block_id=block_id).first()
+        if not block:
+            return Response({'error': 'Blok topilmadi'}, status=404)
+        return Response(FinishedBlockSerializer(block).data)

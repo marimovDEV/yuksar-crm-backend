@@ -39,6 +39,7 @@ def create_journal_entry(
     user=None,
     auto_post=False,
     tax_rate_id=None,
+    attachment=None,
 ):
     """
     Create a new journal entry with debit/credit lines.
@@ -79,7 +80,9 @@ def create_journal_entry(
             total_amount=total_debit,
             created_by=user,
             tax_rate_id=tax_rate_id,
+            attachment=attachment,
         )
+
 
         for line_data in lines:
             account_code = line_data.get('account_code')

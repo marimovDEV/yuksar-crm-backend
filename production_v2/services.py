@@ -78,16 +78,23 @@ def _mark_linked_invoice_ready(order, warehouse=None):
     except Exception:
         pass
 
-def complete_block_production(zames, form_number, block_count, length, width, height, density, user=None):
+def _generate_block_id():
+    """Generates a unique block ID based on current year and sequence."""
+    from .models import FinishedBlock
+    year = timezone.now().year
+    count = FinishedBlock.objects.count() + 1
+    return f"BLK-{year}-{count:06d}"
+
+def complete_block_production(zames, form_number, block_count, length, width, height, density, user=None, shift='DAY'):
     """
     Enterprise: Records physical block production from Zames atomically.
-    Transitions Zames to DONE and initiates DRYING.
+    Creates individual FinishedBlock records for each block in the lot.
     """
     with transaction.atomic():
         # Auto-calculate volume: (L * W * H / 1e9) * count
         volume = (Decimal(str(length)) * Decimal(str(width)) * Decimal(str(height)) / Decimal('1e9')) * Decimal(str(block_count))
         
-        block_batch = BlockProduction.objects.create(
+        block_lot = BlockProduction.objects.create(
             zames=zames,
             form_number=form_number,
             block_count=block_count,
@@ -96,20 +103,71 @@ def complete_block_production(zames, form_number, block_count, length, width, he
             height=height,
             density=density,
             volume=volume,
-            status='DRYING'
+            status='COOLING',
+            operator=user or zames.operator,
+            shift=shift
         )
         
-        # Start Drying Process
-        DryingProcess.objects.create(block_production=block_batch)
+        # Start Cooling/Drying Process
+        DryingProcess.objects.create(block_production=block_lot)
+        
+        # Generate individual blocks for traceability
+        from .models import FinishedBlock, BlockTimeline
+        for _ in range(block_count):
+            block_id = _generate_block_id()
+            block = FinishedBlock.objects.create(
+                block_id=block_id,
+                lot=block_lot,
+                status='COOLING'
+            )
+            BlockTimeline.objects.create(
+                block=block,
+                status='PRODUCED',
+                notes=f"Forma: {form_number}, Batch: {zames.zames_number}",
+                user=user
+            )
         
         log_action(
             user=user,
             action='CREATE',
             module='Production',
-            description=f"Bloklar quyildi: {block_count} dona ({density} kg/m3).",
-            object_id=block_batch.id
+            description=f"Bloklar quyildi: {block_count} dona ({density} kg/m3). Lot ID: {block_lot.id}",
+            object_id=block_lot.id
         )
-        return block_batch
+        return block_lot
+
+def perform_block_qc(block_id, classification, status, notes='', actual_weight=None, actual_density=None, moisture=None, length=None, width=None, height=None, visual_defects='', user=None):
+    """
+    Enterprise: Performs QC on an individual block, updating its status and classification.
+    """
+    with transaction.atomic():
+        from .models import FinishedBlock, BlockTimeline
+        # Try finding by block_id (string) or id (integer)
+        if isinstance(block_id, str) and block_id.startswith('BLK-'):
+            block = FinishedBlock.objects.select_for_update().get(block_id=block_id)
+        else:
+            block = FinishedBlock.objects.select_for_update().get(id=block_id)
+        
+        block.classification = classification
+        block.status = status
+        if actual_weight is not None: block.actual_weight = actual_weight
+        if actual_density is not None: block.actual_density = actual_density
+        if moisture is not None: block.moisture = moisture
+        if length is not None: block.length = length
+        if width is not None: block.width = width
+        if height is not None: block.height = height
+        if visual_defects: block.visual_defects = visual_defects
+        
+        block.save()
+        
+        BlockTimeline.objects.create(
+            block=block,
+            status=f"QC_{classification}",
+            notes=f"{notes}\nDefects: {visual_defects}" if visual_defects else notes,
+            user=user
+        )
+        
+        return block
 
 def finish_drying_process(block_production_id, user=None):
     """

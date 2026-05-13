@@ -39,10 +39,17 @@ class FinancialTransactionViewSet(NoDeleteMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [IsAdminOrSalesManager()]
-        return [IsAdminOrSalesManager()]
+        return [IsAdmin()]
 
     def perform_create(self, serializer):
         serializer.save(performed_by=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status = self.request.query_params.get('status')
+        if status:
+            qs = qs.filter(status=status)
+        return qs
 
 class InternalTransferViewSet(NoDeleteMixin, viewsets.ModelViewSet):
     queryset = InternalTransfer.objects.all().order_by('-created_at')
@@ -68,34 +75,54 @@ class FinanceAnalyticsView(views.APIView):
         today = timezone.now().date()
         start_date = today - timedelta(days=30)
         
-        # Cashflow Chart Data
+        # Cashflow Chart Data (Actual vs Forecast)
         chart_data = []
-        for i in range(30, -1, -1):
+        for i in range(30, -5, -1): # Include 5 days forecast
             date = today - timedelta(days=i)
-            income = FinancialTransaction.objects.filter(type='INCOME', created_at__date=date).aggregate(Sum('amount'))['amount__sum'] or 0
-            expense = FinancialTransaction.objects.filter(type='EXPENSE', created_at__date=date).aggregate(Sum('amount'))['amount__sum'] or 0
+            income = FinancialTransaction.objects.filter(type='INCOME', status='APPROVED', created_at__date=date).aggregate(Sum('amount'))['amount__sum'] or 0
+            expense = FinancialTransaction.objects.filter(type='EXPENSE', status='APPROVED', created_at__date=date).aggregate(Sum('amount'))['amount__sum'] or 0
+            
+            # Forecasted amounts based on due_date
+            forecast_income = FinancialTransaction.objects.filter(type='INCOME', status='PENDING', due_date__date=date).aggregate(Sum('amount'))['amount__sum'] or 0
+            forecast_expense = FinancialTransaction.objects.filter(type='EXPENSE', status='PENDING', due_date__date=date).aggregate(Sum('amount'))['amount__sum'] or 0
+            
             chart_data.append({
                 'date': date.strftime('%d.%m'),
                 'income': float(income),
-                'expense': float(expense)
+                'expense': float(expense),
+                'forecast_income': float(forecast_income),
+                'forecast_expense': float(forecast_expense),
+                'is_forecast': date > today
             })
             
-        # Category Breakdown
-        categories = FinancialTransaction.objects.filter(type='EXPENSE', created_at__date__gte=start_date).values('category__name').annotate(total=Sum('amount'))
+        # Category Breakdown (Hierarchical level 1)
+        categories = FinancialTransaction.objects.filter(
+            type='EXPENSE', 
+            status='APPROVED',
+            created_at__date__gte=start_date
+        ).values('category__name').annotate(total=Sum('amount'))
+        
         category_data = [
             {'name': c['category__name'] or 'Boshqa', 'value': float(c['total'])} 
             for c in categories
         ]
         
         # Debt Summary
-        total_debt = ClientBalance.objects.aggregate(Sum('total_debt'))['total_debt__sum'] or 0
+        customer_debt = ClientBalance.objects.filter(total_debt__gt=0).aggregate(Sum('total_debt'))['total_debt__sum'] or 0
+        supplier_debt = ClientBalance.objects.filter(total_debt__lt=0).aggregate(Sum('total_debt'))['total_debt__sum'] or 0
+        
+        # Pending Approvals
+        pending_count = FinancialTransaction.objects.filter(status='PENDING').count()
         
         return Response({
             'cashflow': chart_data,
             'categories': category_data,
             'summary': {
-                'total_debt': float(total_debt),
-                'total_balance': float(Cashbox.objects.aggregate(Sum('balance'))['balance__sum'] or 0)
+                'customer_debt': float(customer_debt),
+                'supplier_debt': abs(float(supplier_debt)),
+                'total_balance': float(Cashbox.objects.aggregate(Sum('balance'))['balance__sum'] or 0),
+                'pending_approvals': pending_count,
+                'overdue_count': ClientBalance.objects.filter(due_date__lt=today, total_debt__gt=0).count()
             }
         })
 

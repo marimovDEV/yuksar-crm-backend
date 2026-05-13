@@ -85,6 +85,12 @@ INSTALLED_APPS = [
     'logistics',
     'transport',
 
+    # New modules
+    'dealers',
+    'leads',
+    'payroll',
+    'pricing',
+
     # Legacy apps
     'products',
     'warehouse',
@@ -205,10 +211,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'accounts.User'
 
 # CORS
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "https://penaplast-crm.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
+    "http://127.0.0.1:3000",
 ]
 
 CSRF_TRUSTED_ORIGINS = [

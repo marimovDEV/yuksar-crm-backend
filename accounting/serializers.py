@@ -90,6 +90,7 @@ class JournalEntrySerializer(serializers.ModelSerializer):
             'created_by', 'created_by_name',
             'posted_at', 'voided_at', 'voided_by', 'voided_by_name', 'void_reason',
             'created_at', 'updated_at',
+            'attachment',
             'lines',
         ]
         read_only_fields = [
@@ -111,6 +112,7 @@ class JournalEntryCreateSerializer(serializers.Serializer):
     reference = serializers.CharField(required=False, default='', allow_blank=True)
     tax_rate_id = serializers.IntegerField(required=False, allow_null=True)
     auto_post = serializers.BooleanField(default=False)
+    attachment = serializers.FileField(required=False, allow_null=True)
     lines = JournalEntryLineCreateSerializer(many=True, min_length=2)
 
 

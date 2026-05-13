@@ -66,3 +66,69 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
             'total_users': total_users,
             'status': 'Stable'
         })
+
+from .models import UserGuideSection, UserGuideContent
+from .serializers import UserGuideSectionSerializer
+
+class UserGuideViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows user guide sections to be viewed.
+    Includes logic to filter content by user role.
+    """
+    serializer_class = UserGuideSectionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only active sections
+        queryset = UserGuideSection.objects.filter(is_active=True).prefetch_related('contents')
+        
+        # Filter contents by user role within the serializer logic or via prefetching
+        # But since we want to be efficient, we can prefetch and filter.
+        user = self.request.user
+        user_role = getattr(user, 'role_obj', None)
+
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        user_role = getattr(request.user, 'role_obj', None)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        data = serializer.data
+        
+        # Post-process data to filter role-specific content
+        for section in data:
+            section['contents'] = [
+                c for c in section['contents'] 
+                if c['role'] is None or c['role'] == (user_role.id if user_role else None)
+            ]
+            
+        return Response(data)
+
+from .models import SupportTicket, VideoTutorial
+from .serializers import SupportTicketSerializer, VideoTutorialSerializer
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+
+class SupportTicketViewSet(viewsets.ModelViewSet):
+    """
+    API for user support requests.
+    """
+    serializer_class = SupportTicketSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser or get_user_role_name(user) in ['Bosh Admin', 'Admin']:
+            return SupportTicket.objects.all()
+        return SupportTicket.objects.filter(user=user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class VideoTutorialViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API for video tutorials.
+    """
+    queryset = VideoTutorial.objects.filter(is_active=True)
+    serializer_class = VideoTutorialSerializer
+    permission_classes = [permissions.IsAuthenticated]
