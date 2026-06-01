@@ -80,6 +80,16 @@ class UserViewSet(viewsets.ModelViewSet):
 
         return DRFResponse(kpi_data)
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def impersonate(self, request, pk=None):
+        target_user = self.get_object()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(target_user)
+        return DRFResponse({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+        })
+
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer

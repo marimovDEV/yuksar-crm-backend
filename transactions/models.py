@@ -12,6 +12,7 @@ class Transaction(models.Model):
     )
 
     product = models.ForeignKey('warehouse_v2.Material', on_delete=models.CASCADE)
+    block = models.ForeignKey('production_v2.FinishedBlock', on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
     from_warehouse = models.ForeignKey('warehouse_v2.Warehouse', on_delete=models.SET_NULL, null=True, related_name='from_wh')
     to_warehouse = models.ForeignKey('warehouse_v2.Warehouse', on_delete=models.SET_NULL, null=True, related_name='to_wh')
     

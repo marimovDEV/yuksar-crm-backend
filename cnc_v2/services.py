@@ -34,6 +34,10 @@ def start_cnc_job(job_id, operator=None):
                 job.order_stage.started_at = timezone.now()
             job.order_stage.save()
 
+        if job.input_finished_block:
+            from production_v2.services import transition_block_status
+            transition_block_status(job.input_finished_block, 'CUTTING', user=operator or job.operator)
+
         log_action(
             user=operator or job.operator,
             action='UPDATE',
@@ -93,7 +97,7 @@ def finish_cnc_job(job_id, finished_qty, waste_m3, operator=None):
                 to_wh=None, # Consumed
                 qty=1, # 1 block unit
                 trans_type='PRODUCTION',
-                batch_number=block.form_number
+                batch_number=f"LOT-{block.id}"
             )
         
         # Always update BlockProduction count
@@ -141,6 +145,10 @@ def finish_cnc_job(job_id, finished_qty, waste_m3, operator=None):
         job.status = 'COMPLETED'
         job.end_time = timezone.now()
         job.save()
+
+        if job.input_finished_block:
+            from production_v2.services import transition_block_status
+            transition_block_status(job.input_finished_block, 'PACKAGED', user=operator or job.operator)
 
         # Assuming 1m3 of EPS is ~15-20kg. Let's use 15kg as constant if not specified.
         waste_kg = waste_m3 * 15 

@@ -1,5 +1,5 @@
 from django.db import models
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, MethodNotAllowed
 from common_v2.services import log_action
 
 class NoDeleteMixin:
@@ -8,10 +8,10 @@ class NoDeleteMixin:
     Ensures that important enterprise documents can only be cancelled, not deleted.
     """
     def destroy(self, request, *args, **kwargs):
-        raise ValidationError("Hujjatni o'chirib bo'lmaydi. Faqat 'Bekor qilish' mumkin.")
+        raise MethodNotAllowed(request.method, detail="Hujjatni o'chirib bo'lmaydi. Faqat 'Bekor qilish' mumkin.")
     
     def perform_destroy(self, instance):
-        raise ValidationError("Hujjatni o'chirib bo'lmaydi. Faqat 'Bekor qilish' mumkin.")
+        raise MethodNotAllowed('DELETE', detail="Hujjatni o'chirib bo'lmaydi. Faqat 'Bekor qilish' mumkin.")
 
 class StateMachineMixin:
     """
@@ -24,14 +24,14 @@ class StateMachineMixin:
     }
     """
     
-    def transition_to(self, new_status, user=None, reason=None):
+    def transition_to(self, new_status, user=None, reason=None, force=False):
         old_status = getattr(self, 'status', None)
         if not old_status:
             raise ValidationError("Modelda status maydoni topilmadi.")
             
         allowed_transitions = getattr(self, 'STATUS_TRANSITIONS', {}).get(old_status, [])
         
-        if new_status not in allowed_transitions and old_status != new_status:
+        if not force and new_status not in allowed_transitions and old_status != new_status:
             raise ValidationError(
                 f"Noto'g'ri status o'tishi: {old_status} -> {new_status}. "
                 f"Ruxsat berilgan: {', '.join(allowed_transitions)}"

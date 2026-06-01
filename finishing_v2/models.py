@@ -21,6 +21,7 @@ class FinishingJob(models.Model):
     
     # Link to CNC output if applicable
     cnc_job = models.ForeignKey('cnc_v2.CNCJob', on_delete=models.SET_NULL, null=True, blank=True, related_name='finishing_jobs')
+    input_finished_block = models.ForeignKey('production_v2.FinishedBlock', on_delete=models.SET_NULL, null=True, blank=True, related_name='finishing_jobs')
     
     # Link to production pipeline stage
     order_stage = models.ForeignKey('production_v2.ProductionOrderStage', on_delete=models.SET_NULL, null=True, blank=True, related_name='finishing_jobs')

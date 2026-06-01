@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     'budgets',
     'compliance',
     'alerts',
+    'telemetry',
     'finance',
     'projects',
     'logistics',

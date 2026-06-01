@@ -150,6 +150,16 @@ class DocumentViewSet(NoDeleteMixin, viewsets.ModelViewSet):
                 return Response(RawMaterialBatchSerializer(batch).data)
             except RawMaterialBatch.DoesNotExist:
                 return Response({'error': 'Partiya topilmadi'}, status=404)
+
+        elif qr_code.startswith("BLK:"):
+            block_no = qr_code.split(":", 1)[1]
+            from production_v2.models import FinishedBlock
+            from production_v2.serializers import FinishedBlockSerializer
+            try:
+                block = FinishedBlock.objects.get(block_id=block_no)
+                return Response(FinishedBlockSerializer(block).data)
+            except FinishedBlock.DoesNotExist:
+                return Response({'error': 'Blok topilmadi'}, status=404)
         
         # Fallback to legacy UUID lookup if no prefix
         try:

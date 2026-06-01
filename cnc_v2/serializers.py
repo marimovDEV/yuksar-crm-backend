@@ -6,6 +6,8 @@ class CNCJobSerializer(serializers.ModelSerializer):
     output_product_name = serializers.ReadOnlyField(source='output_product.name')
     input_block_number = serializers.ReadOnlyField(source='input_block.form_number')
     input_block_status = serializers.ReadOnlyField(source='input_block.status')
+    input_finished_block_status = serializers.ReadOnlyField(source='input_finished_block.status')
+    input_finished_block_code = serializers.ReadOnlyField(source='input_finished_block.block_id')
     
     class Meta:
         model = CNCJob

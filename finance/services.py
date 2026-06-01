@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db import transaction, models
 from decimal import Decimal
 from .models import Account, Transaction, TransactionEntry
 
@@ -24,7 +24,14 @@ def record_double_entry(description, entries, reference=None, user=None):
         
         # 3. Create Entries
         for entry_data in entries:
-            account = Account.objects.get(code=entry_data['account_code'])
+            code = entry_data['account_code']
+            account, _ = Account.objects.get_or_create(
+                code=code,
+                defaults={
+                    'name': f"Account {code}",
+                    'type': 'ASSET' if (code.startswith('1') or code.startswith('2')) else 'EXPENSE'
+                }
+            )
             TransactionEntry.objects.create(
                 transaction=tx,
                 account=account,
@@ -40,7 +47,13 @@ def get_account_balance(account_code):
     Balance = Sum(Debits) - Sum(Credits) for Assets/Expenses
     Balance = Sum(Credits) - Sum(Debits) for Liabilities/Equity/Income
     """
-    account = Account.objects.get(code=account_code)
+    account, _ = Account.objects.get_or_create(
+        code=account_code,
+        defaults={
+            'name': f"Account {account_code}",
+            'type': 'ASSET' if (account_code.startswith('1') or account_code.startswith('2')) else 'EXPENSE'
+        }
+    )
     entries = TransactionEntry.objects.filter(account=account)
     
     debit_sum = entries.aggregate(models.Sum('debit'))['debit__sum'] or Decimal(0)

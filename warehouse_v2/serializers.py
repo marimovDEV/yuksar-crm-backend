@@ -3,7 +3,7 @@ from rest_framework import serializers
 from django.db import transaction
 from .models import (
     Supplier, Material, RawMaterialBatch, Warehouse, Stock, 
-    WarehouseTransfer, PurchaseOrder, PurchaseOrderItem
+    WarehouseTransfer, PurchaseOrder, PurchaseOrderItem, InventoryAudit, InventoryAuditLine
 )
 from inventory.services import update_inventory
 
@@ -111,6 +111,7 @@ class WarehouseTransferSerializer(serializers.ModelSerializer):
     from_warehouse_name = serializers.ReadOnlyField(source='from_warehouse.name')
     to_warehouse_name = serializers.ReadOnlyField(source='to_warehouse.name')
     batch_number = serializers.ReadOnlyField(source='batch.batch_number')
+    block_id = serializers.ReadOnlyField(source='block.block_id')
     
     created_by_name = serializers.ReadOnlyField(source='created_by.full_name')
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -119,12 +120,25 @@ class WarehouseTransferSerializer(serializers.ModelSerializer):
     class Meta:
         model = WarehouseTransfer
         fields = '__all__'
+        extra_kwargs = {
+            'material': {'required': False, 'allow_null': True},
+            'batch': {'required': False, 'allow_null': True},
+            'block': {'required': False, 'allow_null': True},
+        }
 
     def validate(self, data):
         # Validation for Stock (Industrial Requirement)
         from_wh = data.get('from_warehouse')
         material = data.get('material')
         qty = data.get('quantity')
+        block = data.get('block')
+
+        if block and not material:
+            zames = getattr(getattr(block, 'lot', None), 'zames', None)
+            recipe = getattr(zames, 'recipe', None)
+            if recipe and recipe.product:
+                data['material'] = recipe.product
+                material = recipe.product
         
         if from_wh and material and qty:
             stock = Stock.objects.filter(warehouse=from_wh, material=material).first()
@@ -139,3 +153,24 @@ class WarehouseTransferSerializer(serializers.ModelSerializer):
         # In Industrial WMS, creation doesn't impact stock immediately.
         # It only creates a PENDING request.
         return super().create(validated_data)
+
+
+class InventoryAuditLineSerializer(serializers.ModelSerializer):
+    material_name = serializers.ReadOnlyField(source='material.name')
+    variance = serializers.ReadOnlyField()
+
+    class Meta:
+        model = InventoryAuditLine
+        fields = '__all__'
+
+
+class InventoryAuditSerializer(serializers.ModelSerializer):
+    warehouse_name = serializers.ReadOnlyField(source='warehouse.name')
+    auditor_name = serializers.ReadOnlyField(source='auditor.full_name')
+    approved_by_name = serializers.ReadOnlyField(source='approved_by.full_name')
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    lines = InventoryAuditLineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = InventoryAudit
+        fields = '__all__'

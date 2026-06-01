@@ -36,6 +36,82 @@ class InventoryBatch(models.Model):
     def __str__(self):
         return f"{self.batch_number} | {self.product.name} | {self.current_weight} {self.product.unit}"
 
+    @property
+    def quantity(self):
+        return self.current_weight
+
+    @quantity.setter
+    def quantity(self, value):
+        self.current_weight = value
+
+    @property
+    def reserved_quantity(self):
+        return self.reserved_weight
+
+    @property
+    def warehouse(self):
+        return self.location
+
+    @warehouse.setter
+    def warehouse(self, value):
+        self.location = value
+
+    @reserved_quantity.setter
+    def reserved_quantity(self, value):
+        self.reserved_weight = value
+
+class InventoryQuerySet(models.QuerySet):
+    def _translate_kwargs(self, kwargs):
+        if 'quantity' in kwargs:
+            kwargs['current_weight'] = kwargs.pop('quantity')
+        if 'reserved_quantity' in kwargs:
+            kwargs['reserved_weight'] = kwargs.pop('reserved_quantity')
+        if 'warehouse' in kwargs:
+            kwargs['location'] = kwargs.pop('warehouse')
+        return kwargs
+
+    def filter(self, *args, **kwargs):
+        return super().filter(*args, **self._translate_kwargs(kwargs))
+
+    def get(self, *args, **kwargs):
+        return super().get(*args, **self._translate_kwargs(kwargs))
+
+    def create(self, **kwargs):
+        qty = kwargs.get('quantity')
+        if qty is not None:
+            kwargs.setdefault('initial_weight', qty)
+        return super().create(**self._translate_kwargs(kwargs))
+
+    def get_or_create(self, defaults=None, **kwargs):
+        if defaults:
+            defaults = self._translate_kwargs(dict(defaults))
+        qty = kwargs.get('quantity')
+        if qty is not None:
+            kwargs.setdefault('initial_weight', qty)
+        return super().get_or_create(defaults=defaults, **self._translate_kwargs(kwargs))
+
+class Inventory(InventoryBatch):
+    objects = InventoryQuerySet.as_manager()
+
+    class Meta:
+        proxy = True
+
+    def __init__(self, *args, **kwargs):
+        quantity = kwargs.pop('quantity', None)
+        reserved_quantity = kwargs.pop('reserved_quantity', None)
+        warehouse = kwargs.pop('warehouse', None)
+        
+        super().__init__(*args, **kwargs)
+        
+        if quantity is not None:
+            self.current_weight = quantity
+            if not self.initial_weight:
+                self.initial_weight = quantity
+        if reserved_quantity is not None:
+            self.reserved_weight = reserved_quantity
+        if warehouse is not None:
+            self.location = warehouse
+
 class InventoryMovement(models.Model):
     TYPE_CHOICES = (
         ('IN', 'Kirim (In)'),

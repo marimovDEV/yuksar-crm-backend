@@ -7,6 +7,7 @@ from rest_framework.exceptions import ValidationError
 from finance_v2.models import FinancialTransaction, Cashbox, ClientBalance
 from accounting.signals import _safe_create_entry
 from decimal import Decimal
+from finance.services import record_double_entry
 
 
 def _release_reserved_inventory(item):
@@ -272,9 +273,9 @@ def transition_invoice_status(invoice_id, new_status, performed_by=None):
                 if sklad4:
                     available = get_stock_balance(item.product, sklad4)
                 
-                if available < item.quantity:
+                if float(available) < float(item.quantity):
                     # Not enough stock → auto-create production order
-                    shortfall = item.quantity - available
+                    shortfall = float(item.quantity) - float(available)
                     try:
                         create_production_order_from_sale(
                             invoice_id=invoice.id,

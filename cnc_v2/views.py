@@ -20,7 +20,11 @@ class CNCJobViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         job_number = f"CNC-{timezone.now().strftime('%y%m%d%H%M%S')}"
-        serializer.save(operator=self.request.user, job_number=job_number)
+        input_finished_block = serializer.validated_data.get('input_finished_block')
+        kwargs = {}
+        if input_finished_block and not serializer.validated_data.get('input_block'):
+            kwargs['input_block'] = input_finished_block.lot
+        serializer.save(operator=self.request.user, job_number=job_number, **kwargs)
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):

@@ -155,8 +155,10 @@ class WarehouseTransfer(models.Model):
         DRAFT = 'DRAFT', 'Qoralama'
         PENDING = 'PENDING', 'Tasdiqlash kutilmoqda'
         APPROVED = 'APPROVED', 'Tasdiqlandi'
-        SHIPPED = 'SHIPPED', 'Yo‘lda (Jo‘natildi)'
+        IN_TRANSIT = 'IN_TRANSIT', 'Yo‘lda'
+        SHIPPED = 'SHIPPED', 'Yo‘lda (Eski holat)'
         RECEIVED = 'RECEIVED', 'Qabul qilindi'
+        COMPLETED = 'COMPLETED', 'Yakunlandi'
         CANCELLED = 'CANCELLED', 'Bekor qilindi'
 
     class TransferType(models.TextChoices):
@@ -180,6 +182,7 @@ class WarehouseTransfer(models.Model):
     to_warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='incoming_transfers')
     
     material = models.ForeignKey(Material, on_delete=models.CASCADE)
+    block = models.ForeignKey('production_v2.FinishedBlock', on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers')
     batch = models.ForeignKey(RawMaterialBatch, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers')
     quantity = models.DecimalField(max_digits=18, decimal_places=3)
     

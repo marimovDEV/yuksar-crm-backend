@@ -37,7 +37,7 @@ class FinancialTransactionViewSet(NoDeleteMixin, viewsets.ModelViewSet):
     serializer_class = FinancialTransactionSerializer
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'create']:
             return [IsAdminOrSalesManager()]
         return [IsAdmin()]
 

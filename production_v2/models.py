@@ -165,7 +165,7 @@ class BlockProduction(models.Model):
     def __str__(self):
         return f"Lot {self.id} | {self.block_count} blocks | {self.density} kg/m3"
 
-class FinishedBlock(models.Model):
+class FinishedBlock(StateMachineMixin, models.Model):
     CLASSIFICATION_CHOICES = (
         ('A_CLASS', 'A-Class (Premium)'),
         ('B_CLASS', 'B-Class (Standard)'),
@@ -174,13 +174,34 @@ class FinishedBlock(models.Model):
     )
     
     STATUS_CHOICES = (
+        ('CREATED', 'Yaratildi'),
         ('COOLING', 'Sovutilmoqda'),
         ('QC_PENDING', 'Sifat nazoratida'),
         ('READY', 'Sotuvga tayyor'),
+        ('TRANSFERRED', 'O‘tkazildi'),
+        ('CUTTING', 'Kesish jarayonida'),
+        ('FINISHING', 'Pardozlash jarayonida'),
+        ('PACKAGED', 'Qadoqlandi'),
+        ('SHIPPED', 'Jo‘natildi'),
         ('RESERVED', 'Band qilingan'),
         ('SOLD', 'Sotilgan'),
         ('RECYCLE', 'Qayta ishlashga'),
     )
+
+    STATUS_TRANSITIONS = {
+        'CREATED': ['COOLING'],
+        'COOLING': ['QC_PENDING', 'RECYCLE'],
+        'QC_PENDING': ['READY', 'RECYCLE'],
+        'READY': ['TRANSFERRED', 'RESERVED', 'SOLD', 'CUTTING', 'FINISHING', 'RECYCLE'],
+        'TRANSFERRED': ['READY', 'RESERVED', 'SOLD', 'CUTTING', 'FINISHING', 'RECYCLE'],
+        'RESERVED': ['READY', 'SOLD', 'RECYCLE'],
+        'CUTTING': ['PACKAGED', 'RECYCLE'],
+        'FINISHING': ['PACKAGED', 'RECYCLE'],
+        'PACKAGED': ['SHIPPED', 'SOLD', 'RECYCLE'],
+        'SHIPPED': [],
+        'SOLD': [],
+        'RECYCLE': [],
+    }
 
     block_id = models.CharField(max_length=50, unique=True) # BLK-2026-000001
     lot = models.ForeignKey(BlockProduction, on_delete=models.CASCADE, related_name='individual_blocks')

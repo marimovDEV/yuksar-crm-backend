@@ -26,6 +26,10 @@ def start_finishing_job(job_id, operator):
             stage=job.current_stage,
             operator=operator
         )
+
+        if job.input_finished_block:
+            from production_v2.services import transition_block_status
+            transition_block_status(job.input_finished_block, 'FINISHING', user=operator)
     return job
 
 def advance_finishing_stage(job_id, operator):
@@ -118,6 +122,10 @@ def finish_finishing_job(job_id, finished_qty, waste_qty, operator):
         job.finished_quantity = finished_qty
         job.waste_quantity = waste_qty
         job.save()
+
+        if job.input_finished_block:
+            from production_v2.services import transition_block_status
+            transition_block_status(job.input_finished_block, 'PACKAGED', user=operator)
         
         # 4. Inventory Movement (Sklad 3 -> Sklad 4)
         # Assuming Sklad 3 (Production Output) -> Sklad 4 (Prepared for Sale)
@@ -137,10 +145,32 @@ def finish_finishing_job(job_id, finished_qty, waste_qty, operator):
             job.product.category = 'FINISHED'
             job.product.save()
 
-        # Update Sklad 3 (Deduct planned or finished? Usually finished + waste)
-        # Deduct total used from Sklad 3
-        source_batch = job.cnc_job.job_number if job.cnc_job else None
-        update_inventory(job.product, sklad3, -(finished_qty + waste_qty), batch_number=source_batch)
+        # Update Sklad 3 (Deduct from CNC output) or Sklad 2 (Deduct raw block directly)
+        if job.cnc_job:
+            source_batch = job.cnc_job.job_number
+            update_inventory(job.product, sklad3, -(finished_qty + waste_qty), batch_number=source_batch)
+        elif job.input_finished_block:
+            block = job.input_finished_block.lot
+            input_product = None
+            if hasattr(block.zames, 'items'):
+                first_item = block.zames.items.first()
+                if first_item:
+                    input_product = first_item.material
+            if input_product:
+                from transactions.services import create_transaction
+                create_transaction(
+                    product=input_product,
+                    from_wh=block.warehouse or sklad2,
+                    to_wh=None, # Consumed
+                    qty=1, # 1 block unit
+                    trans_type='PRODUCTION',
+                    batch_number=f"LOT-{block.id}"
+                )
+                if block.block_count > 0:
+                    block.block_count -= 1
+                    if block.block_count <= 0:
+                        block.status = 'SOLD'
+                    block.save()
         
         # Add finished to Sklad 4
         update_inventory(job.product, sklad4, finished_qty, batch_number=job.job_number)

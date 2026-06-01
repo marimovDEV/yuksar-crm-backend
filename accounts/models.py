@@ -41,6 +41,8 @@ class User(AbstractUser):
         ('ACTIVE', 'Active'),
         ('BLOCKED', 'Blocked'),
         ('PENDING', 'Pending'),
+        ('RESIGNED', 'Resigned'),
+        ('VACATION', 'Vacation'),
     )
     
     full_name = models.CharField(max_length=255)
@@ -59,6 +61,11 @@ class User(AbstractUser):
     
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     assigned_warehouses = models.ManyToManyField('warehouse_v2.Warehouse', blank=True, related_name='assigned_users')
+    
+    # Shifts and Machines (Enterprise Requirements)
+    shift = models.CharField(max_length=50, blank=True, null=True)
+    assigned_machine = models.CharField(max_length=100, blank=True, null=True)
+    must_change_password = models.BooleanField(default=False)
     
     # Additional Metadata
     notes = models.TextField(blank=True)

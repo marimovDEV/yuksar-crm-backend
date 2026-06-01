@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError
 from inventory.services import update_inventory, check_stock
 from common_v2.services import log_action
 from warehouse_v2.models import RawMaterialBatch, Warehouse, Material
-from .models import Zames, BlockProduction, DryingProcess, ProductionOrder, ProductionOrderStage, StageActionLog, Bunker
+from .models import Zames, BlockProduction, DryingProcess, ProductionOrder, ProductionOrderStage, StageActionLog, Bunker, ProductionPlan
 
 def _ensure_production_order_document(order, user=None):
     from documents.models import Document, DocumentItem
@@ -85,6 +85,34 @@ def _generate_block_id():
     count = FinishedBlock.objects.count() + 1
     return f"BLK-{year}-{count:06d}"
 
+
+def _append_block_timeline(block, status, notes='', user=None):
+    from .models import BlockTimeline
+    return BlockTimeline.objects.create(
+        block=block,
+        status=status,
+        notes=notes,
+        user=user
+    )
+
+
+def update_block_location(block, warehouse=None, zone=None, rack=None, user=None, notes=''):
+    block.warehouse = warehouse
+    if zone is not None:
+        block.zone = zone
+    if rack is not None:
+        block.rack = rack
+    block.save(update_fields=['warehouse', 'zone', 'rack', 'updated_at'])
+    location_note = notes or f"Joylashuv yangilandi: {warehouse.name if warehouse else 'N/A'} / {block.zone or '-'} / {block.rack or '-'}"
+    _append_block_timeline(block, 'LOCATION_UPDATED', location_note, user=user)
+    return block
+
+
+def transition_block_status(block, status, user=None, notes=''):
+    block.transition_to(status, user=user)
+    _append_block_timeline(block, status, notes or f"Holat yangilandi: {status}", user=user)
+    return block
+
 def complete_block_production(zames, form_number, block_count, length, width, height, density, user=None, shift='DAY'):
     """
     Enterprise: Records physical block production from Zames atomically.
@@ -112,20 +140,21 @@ def complete_block_production(zames, form_number, block_count, length, width, he
         DryingProcess.objects.create(block_production=block_lot)
         
         # Generate individual blocks for traceability
-        from .models import FinishedBlock, BlockTimeline
+        from .models import FinishedBlock
         for _ in range(block_count):
             block_id = _generate_block_id()
             block = FinishedBlock.objects.create(
                 block_id=block_id,
                 lot=block_lot,
-                status='COOLING'
+                status='COOLING',
+                actual_density=density,
+                length=length,
+                width=width,
+                height=height,
+                qr_code_data=f"BLK:{block_id}",
             )
-            BlockTimeline.objects.create(
-                block=block,
-                status='PRODUCED',
-                notes=f"Forma: {form_number}, Batch: {zames.zames_number}",
-                user=user
-            )
+            _append_block_timeline(block, 'CREATED', f"Blok yaratildi. Forma: {form_number}, Zames: {zames.zames_number}", user=user)
+            _append_block_timeline(block, 'COOLING_STARTED', "Sovitish bosqichi boshlandi", user=user)
         
         log_action(
             user=user,
@@ -149,7 +178,6 @@ def perform_block_qc(block_id, classification, status, notes='', actual_weight=N
             block = FinishedBlock.objects.select_for_update().get(id=block_id)
         
         block.classification = classification
-        block.status = status
         if actual_weight is not None: block.actual_weight = actual_weight
         if actual_density is not None: block.actual_density = actual_density
         if moisture is not None: block.moisture = moisture
@@ -158,14 +186,15 @@ def perform_block_qc(block_id, classification, status, notes='', actual_weight=N
         if height is not None: block.height = height
         if visual_defects: block.visual_defects = visual_defects
         
-        block.save()
-        
-        BlockTimeline.objects.create(
-            block=block,
-            status=f"QC_{classification}",
-            notes=f"{notes}\nDefects: {visual_defects}" if visual_defects else notes,
-            user=user
-        )
+        block.transition_to(status, user=user)
+
+        qc_status = 'QC_PASSED' if status == 'READY' else 'QC_FAILED' if status == 'RECYCLE' or classification == 'REJECT' else f"QC_{classification}"
+        timeline_notes = f"{notes}\nDefects: {visual_defects}" if visual_defects else notes
+        _append_block_timeline(block, qc_status, timeline_notes, user=user)
+        if status == 'READY':
+            _append_block_timeline(block, 'READY_FOR_TRANSFER', "Blok ombor/transfer uchun tayyor", user=user)
+        elif status == 'RECYCLE':
+            _append_block_timeline(block, 'DEFECT_RECORDED', timeline_notes or "Brak qayd etildi", user=user)
         
         return block
 
@@ -200,10 +229,20 @@ def finish_drying_process(block_production_id, user=None):
                 product=product_ref,
                 warehouse=sklad2,
                 qty=block_batch.block_count,
+                batch_number=f"LOT-{block_batch.id}",
                 user=user,
                 reference=f"PROD-BLOCK-{block_batch.id}",
                 notes=f"Forma: {block_batch.form_number}"
             )
+
+        for block in block_batch.individual_blocks.all():
+            block.warehouse = sklad2
+            block.zone = 'COOLING-ZONE'
+            block.rack = block_batch.form_number
+            block.transition_to('QC_PENDING', user=user)
+            _append_block_timeline(block, 'COOLING_FINISHED', "Sovitish yakunlandi", user=user)
+            _append_block_timeline(block, 'MOVED_TO_SK2', f"{sklad2.name if sklad2 else 'SK-2'} ga o‘tkazildi", user=user)
+            _append_block_timeline(block, 'QC_PENDING', "Sifat nazorati navbatiga qo‘yildi", user=user)
 
         log_action(
             user=user,
@@ -349,6 +388,9 @@ def transition_to_next_stage(stage_id, user=None, related_id=None):
                     batch_number=f"PROD-{order.order_number}",
                     reference=f"ORDER-FINISHED-{order.order_number}"
                 )
+            
+            # Mark Linked Invoice Ready
+            _mark_linked_invoice_ready(order, warehouse=sklad4)
 
         # Update Progress
         total_stages = order.stages.count()
@@ -385,6 +427,7 @@ def start_production_stage(stage_id, user=None, extra_data=None):
         stage.transition_to('ACTIVE', user=user)
         stage.started_at = stage.started_at or timezone.now()
         stage.current_operator = user
+        _create_stage_update_document(stage, 'START', user=user)
         stage.save()
         return stage
 
@@ -406,6 +449,8 @@ def create_production_order(product, quantity, order_number=None, deadline=None,
             priority=priority,
             status='PENDING'
         )
+
+        _ensure_production_order_document(order, user=user)
 
         stages = [('ZAMES', 'Z'), ('DRYING', 'D'), ('BUNKER', 'B'), ('FORMOVKA', 'F'), ('BLOK', 'B'), ('CNC', 'C'), ('DEKOR', 'D')]
         for i, (code, _) in enumerate(stages):
@@ -467,7 +512,10 @@ def force_release_bunker(bunker_id, user=None):
 def force_complete_stage(stage_id, user=None, reason=None):
     with transaction.atomic():
         stage = ProductionOrderStage.objects.select_for_update().get(id=stage_id)
-        stage.transition_to('DONE', user=user)
+        stage.transition_to('DONE', user=user, force=True)
+        
+        stage.completed_at = timezone.now()
+        stage.save()
         
         log_action(
             user=user,
@@ -476,7 +524,34 @@ def force_complete_stage(stage_id, user=None, reason=None):
             description=f"Bosqich majburiy yakunlandi: {stage.get_stage_type_display()} - {reason}",
             object_id=stage.id
         )
-        return stage.order
+        
+        order = stage.order
+        total_stages = order.stages.count()
+        completed_count = order.stages.filter(status='DONE').count()
+        
+        if total_stages > 0:
+            order.progress = (Decimal(str(completed_count)) / Decimal(str(total_stages))) * Decimal('100.00')
+            order.save()
+            
+        if completed_count == total_stages:
+            order.transition_to('COMPLETED', user=user)
+            order.save()
+            
+            # Final Stock Update for Finished Goods
+            sklad4 = Warehouse.objects.filter(name__icontains='4').first()
+            if sklad4 and order.product:
+                update_inventory(
+                    product=order.product,
+                    warehouse=sklad4,
+                    qty=Decimal(str(order.quantity)),
+                    batch_number=f"PROD-{order.order_number}",
+                    reference=f"ORDER-FINISHED-{order.order_number}"
+                )
+            
+            # Mark Linked Invoice Ready
+            _mark_linked_invoice_ready(order, warehouse=sklad4)
+            
+        return order
 
 def reset_stage_to_pending(stage_id, user=None, reason=None):
     with transaction.atomic():
@@ -501,16 +576,11 @@ def calculate_plan_material_needs(plan_id):
             recipe = order.product.recipes.filter(is_active=True).first()
             if recipe:
                 for item in recipe.items.all():
-                    mat_id = item.material.id
-                    if mat_id not in needs:
-                        needs[mat_id] = {
-                            'name': item.material.name,
-                            'unit': item.material.unit,
-                            'total_qty': 0
-                        }
-                    needs[mat_id]['total_qty'] += item.quantity * order.quantity
+                    mat_id = str(item.material.id)
+                    qty = int(item.quantity * order.quantity)
+                    needs[mat_id] = needs.get(mat_id, 0) + qty
     
-    return list(needs.values())
+    return needs
 
 def start_plan(plan_id, user=None):
     with transaction.atomic():

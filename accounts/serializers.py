@@ -52,6 +52,12 @@ class UserSerializer(serializers.ModelSerializer):
     assigned_warehouses = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Warehouse.objects.all(), required=False
     )
+    custom_permissions = serializers.SlugRelatedField(
+        many=True,
+        slug_field='key',
+        queryset=ERPPermission.objects.all(),
+        required=False
+    )
     
     class Meta:
         model = User
@@ -62,6 +68,7 @@ class UserSerializer(serializers.ModelSerializer):
             'department', 'department_id', 'department_name',
             'assigned_warehouses', 'assigned_warehouse_names',
             'responsibility_summary', 'task_scope',
+            'shift', 'assigned_machine', 'must_change_password', 'custom_permissions',
             'notes', 'last_login_ip', 'password',
             'is_superuser', 'is_staff'
         ]
@@ -117,11 +124,14 @@ class UserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         assigned_warehouses = validated_data.pop('assigned_warehouses', [])
+        custom_permissions = validated_data.pop('custom_permissions', [])
         password = validated_data.pop('password', None)
         self._sync_legacy_role(validated_data)
         user = User.objects.create(**validated_data)
         if assigned_warehouses:
             user.assigned_warehouses.set(assigned_warehouses)
+        if custom_permissions:
+            user.custom_permissions.set(custom_permissions)
         if password:
             user.set_password(password)
             user.save(update_fields=['password'])
@@ -129,6 +139,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         assigned_warehouses = validated_data.pop('assigned_warehouses', None)
+        custom_permissions = validated_data.pop('custom_permissions', None)
         password = validated_data.pop('password', None)
         self._sync_legacy_role(validated_data)
         for attr, value in validated_data.items():
@@ -140,6 +151,8 @@ class UserSerializer(serializers.ModelSerializer):
         instance.save()
         if assigned_warehouses is not None:
             instance.assigned_warehouses.set(assigned_warehouses)
+        if custom_permissions is not None:
+            instance.custom_permissions.set(custom_permissions)
         return instance
 
 class TokenObtainPairSerializer(SimpleJWTTokenSerializer):

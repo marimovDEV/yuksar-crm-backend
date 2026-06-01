@@ -22,7 +22,7 @@ from .services import (
     transition_to_next_stage, assign_task_to_operator,
     calculate_plan_material_needs, start_plan, complete_plan,
     perform_quality_check, start_production_stage, fail_production_stage, force_release_bunker,
-    force_complete_stage, reset_stage_to_pending, perform_block_qc
+    force_complete_stage, reset_stage_to_pending, perform_block_qc, update_block_location, transition_block_status
 )
 
 class RecipeViewSet(viewsets.ModelViewSet):
@@ -432,4 +432,36 @@ class FinishedBlockViewSet(viewsets.ModelViewSet):
         block = FinishedBlock.objects.filter(block_id=block_id).first()
         if not block:
             return Response({'error': 'Blok topilmadi'}, status=404)
+        return Response(FinishedBlockSerializer(block).data)
+
+    @action(detail=False, methods=['get'], url_path='by-qr/(?P<qr_value>[^/.]+)')
+    def by_qr(self, request, qr_value=None):
+        lookup = qr_value.split(':', 1)[1] if qr_value and qr_value.startswith('BLK:') else qr_value
+        block = FinishedBlock.objects.filter(block_id=lookup).first()
+        if not block:
+            return Response({'error': 'Blok topilmadi'}, status=404)
+        return Response(FinishedBlockSerializer(block).data)
+
+    @action(detail=True, methods=['post'], url_path='update-location')
+    def update_location(self, request, pk=None):
+        block = self.get_object()
+        warehouse_id = request.data.get('warehouse_id')
+        zone = request.data.get('zone')
+        rack = request.data.get('rack')
+        notes = request.data.get('notes', '')
+        warehouse = None
+        if warehouse_id:
+            from warehouse_v2.models import Warehouse
+            warehouse = Warehouse.objects.filter(id=warehouse_id).first()
+        block = update_block_location(block, warehouse=warehouse, zone=zone, rack=rack, user=request.user, notes=notes)
+        return Response(FinishedBlockSerializer(block).data)
+
+    @action(detail=True, methods=['post'], url_path='transition-status')
+    def transition_status(self, request, pk=None):
+        block = self.get_object()
+        new_status = request.data.get('status')
+        notes = request.data.get('notes', '')
+        if not new_status:
+            return Response({'error': 'status is required'}, status=status.HTTP_400_BAD_REQUEST)
+        block = transition_block_status(block, new_status, user=request.user, notes=notes)
         return Response(FinishedBlockSerializer(block).data)

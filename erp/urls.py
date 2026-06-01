@@ -13,7 +13,7 @@ from accounts.compatibility import UserMeView
 from warehouse_v2.views import (
     SupplierViewSet, MaterialViewSet, RawMaterialBatchViewSet,
     WarehouseViewSet, StockViewSet, WarehouseTransferViewSet,
-    PurchaseOrderViewSet
+    PurchaseOrderViewSet, InventoryAuditViewSet
 )
 from warehouse_v2.compatibility import (
     InventoryCompatibilityView, ProductCompatibilityView, DocumentCompatibilityView
@@ -46,8 +46,12 @@ from leads.views import LeadViewSet
 from payroll.views import PayrollViewSet
 from pricing.views import PricingRuleViewSet
 from transport.views import VehicleViewSet
+from telemetry.views import PLCDeviceViewSet, PLCTagViewSet, TelemetryHistorianViewSet
 
 router = DefaultRouter()
+router.register(r'telemetry/devices', PLCDeviceViewSet)
+router.register(r'telemetry/tags', PLCTagViewSet, basename='telemetry-tag')
+router.register(r'telemetry/history', TelemetryHistorianViewSet, basename='telemetry-history')
 router.register(r'users', UserViewSet)
 router.register(r'departments', DepartmentViewSet)
 router.register(r'roles', RoleViewSet)
@@ -60,6 +64,7 @@ router.register(r'stocks', StockViewSet, basename='stock')
 router.register(r'warehouse/stocks', StockViewSet, basename='warehouse-stock-alias')
 router.register(r'transfers', WarehouseTransferViewSet, basename='warehouse-transfer')
 router.register(r'warehouse/transfers', WarehouseTransferViewSet, basename='warehouse-transfer-alias')
+router.register(r'inventory/audits', InventoryAuditViewSet, basename='inventory-audit')
 router.register(r'procurement/orders', PurchaseOrderViewSet, basename='purchase-order')
 router.register(r'production/zames', ZamesViewSet)
 router.register(r'production/recipes', RecipeViewSet)
@@ -121,7 +126,7 @@ urlpatterns = [
     
     # Compatibility Routes
     path('api/dashboard/summary/', DashboardCompatibilityView.as_view(), name='dashboard-summary'),
-    # path('api/inventory/', InventoryCompatibilityView.as_view(), name='inventory-compat'), # Removed compatibility
+    path('api/inventory/', InventoryCompatibilityView.as_view(), name='inventory-compat'),
     path('api/products/', ProductCompatibilityView.as_view(), name='product-compat'),
     # path('api/documents/', DocumentCompatibilityView.as_view(), name='document-compat'), # Removed compatibility
     path('api/production-tasks/', ProductionTaskCompatibilityView.as_view(), name='production-tasks'),

@@ -14,6 +14,8 @@ class FinishingJobSerializer(serializers.ModelSerializer):
     stage_display = serializers.CharField(source='get_current_stage_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     stage_logs = FinishingStageLogSerializer(many=True, read_only=True)
+    input_finished_block_status = serializers.ReadOnlyField(source='input_finished_block.status')
+    input_finished_block_code = serializers.ReadOnlyField(source='input_finished_block.block_id')
     
     # Calculate progress % (4 stages)
     progress = serializers.SerializerMethodField()

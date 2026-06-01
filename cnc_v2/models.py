@@ -17,7 +17,8 @@ class CNCJob(models.Model):
     order_stage = models.OneToOneField('production_v2.ProductionOrderStage', on_delete=models.CASCADE, related_name='cnc_job', null=True, blank=True)
     
     # Input/Output Transformation
-    input_block = models.ForeignKey('production_v2.BlockProduction', on_delete=models.CASCADE, related_name='cnc_jobs')
+    input_block = models.ForeignKey('production_v2.BlockProduction', on_delete=models.CASCADE, related_name='cnc_jobs', null=True, blank=True)
+    input_finished_block = models.ForeignKey('production_v2.FinishedBlock', on_delete=models.SET_NULL, null=True, blank=True, related_name='cnc_jobs')
     output_product = models.ForeignKey('warehouse_v2.Material', on_delete=models.CASCADE)
     
     quantity_planned = models.IntegerField()
