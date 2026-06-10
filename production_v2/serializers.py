@@ -297,7 +297,7 @@ class FinishedBlockSerializer(serializers.ModelSerializer):
         load = getattr(getattr(obj, 'lot', None), 'zames', None)
         if not load:
             return None
-        bunker_load = obj.lot.zames.bunkerload_set.order_by('-load_time').select_related('bunker').first()
+        bunker_load = obj.lot.zames.loads.order_by('-load_time').select_related('bunker').first()
         return bunker_load.bunker.name if bunker_load and bunker_load.bunker else None
 
     def get_cooling_time_hours(self, obj):
