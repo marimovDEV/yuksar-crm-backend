@@ -44,8 +44,8 @@ RUN chown -R erpuser:erpuser /app
 
 USER erpuser
 
-# Collect static files during build if needed
-RUN python manage.py collectstatic --no-input
+# Static files are collected at runtime via docker-compose command
+# (python manage.py collectstatic --no-input)
 
 EXPOSE 8000
 

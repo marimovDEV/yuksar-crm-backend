@@ -1,5 +1,5 @@
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsAdmin, IsSalesManager
 from .models import PricingRule
 from .serializers import PricingRuleSerializer
 
@@ -7,7 +7,7 @@ from .serializers import PricingRuleSerializer
 class PricingRuleViewSet(viewsets.ModelViewSet):
     queryset = PricingRule.objects.all().order_by('-priority', '-created_at')
     serializer_class = PricingRuleSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin | IsSalesManager]
 
     def get_queryset(self):
         qs = super().get_queryset()

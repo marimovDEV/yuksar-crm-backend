@@ -193,10 +193,59 @@ def perform_block_qc(block_id, classification, status, notes='', actual_weight=N
         _append_block_timeline(block, qc_status, timeline_notes, user=user)
         if status == 'READY':
             _append_block_timeline(block, 'READY_FOR_TRANSFER', "Blok ombor/transfer uchun tayyor", user=user)
+            # AUTO-WORKFLOW: QC PASSED → create CNCJob automatically
+            _auto_create_cnc_job(block, user=user)
         elif status == 'RECYCLE':
             _append_block_timeline(block, 'DEFECT_RECORDED', timeline_notes or "Brak qayd etildi", user=user)
-        
+
         return block
+
+
+def _auto_create_cnc_job(block, user=None):
+    """Auto-creates a CNCJob when a FinishedBlock passes QC (status=READY)."""
+    try:
+        from cnc_v2.models import CNCJob
+        from warehouse_v2.models import Material
+        # Don't create duplicate
+        if CNCJob.objects.filter(input_finished_block=block).exists():
+            return
+        # Find a suitable output product (same material or a finished product)
+        block_production = block.block_production
+        output_product = None
+        if block_production and block_production.zames:
+            first_item = block_production.zames.items.first()
+            if first_item:
+                output_product = first_item.material
+        if not output_product:
+            output_product = Material.objects.filter(material_type='FINISHED').first()
+        if not output_product:
+            return  # Can't create without output product
+        job_num = f"CNC-AUTO-{block.block_id or block.id}"
+        block_production = getattr(block, 'lot', None)
+        CNCJob.objects.create(
+            job_number=job_num,
+            input_finished_block=block,
+            input_block=block_production,
+            output_product=output_product,
+            quantity_planned=block_production.block_count if block_production else 1,
+            status='CREATED',
+            priority=5,
+        )
+        log_action(
+            user=user,
+            action='CREATE',
+            module='CNC',
+            description=f"QC o'tganidan so'ng CNC ishi avtomatik yaratildi: {job_num}",
+        )
+    except Exception as e:
+        # Log but don't fail the QC operation
+        log_action(
+            user=user,
+            action='UPDATE',
+            module='CNC',
+            description=f"Auto CNCJob yaratishda xatolik: {str(e)}",
+            status='ERROR',
+        )
 
 def finish_drying_process(block_production_id, user=None):
     """

@@ -25,7 +25,7 @@ class FinishingJobSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['job_number']
 
-    def get_progress(self, obj):
+    def get_progress(self, obj) -> float:
         stages = [s[0] for s in FinishingJob.STAGE_CHOICES]
         try:
             idx = stages.index(obj.current_stage)

@@ -1,15 +1,15 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from accounts.permissions import IsAdmin, IsSalesManager
 from .models import Dealer, DealerPayment, DealerOrder
 from .serializers import DealerSerializer, DealerListSerializer, DealerPaymentSerializer, DealerOrderSerializer
 
 
 class DealerViewSet(viewsets.ModelViewSet):
     queryset = Dealer.objects.all().order_by('-created_at')
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin | IsSalesManager]
 
     def get_serializer_class(self):
         if self.action == 'list':

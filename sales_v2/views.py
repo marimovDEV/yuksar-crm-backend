@@ -44,7 +44,7 @@ class CustomerViewSet(NoDeleteMixin, viewsets.ModelViewSet):
         return Response(ContactLogSerializer(logs, many=True).data)
 
 class InvoiceViewSet(NoDeleteMixin, viewsets.ModelViewSet):
-    queryset = Invoice.objects.all().order_by('-date')
+    queryset = Invoice.objects.select_related('customer', 'created_by').prefetch_related('items').order_by('-date')
     serializer_class = InvoiceSerializer
     filterset_fields = ['customer', 'status', 'payment_method']
 

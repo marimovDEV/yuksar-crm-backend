@@ -12,6 +12,8 @@ class FinishingJobViewSet(viewsets.ModelViewSet):
     permission_classes = [IsFinishingOperator]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return FinishingJob.objects.none()
         user = self.request.user
         # Admins/Supervisors see all, others see only assigned
         if user.is_superuser or user.is_staff or get_user_role_name(user) in ['Bosh Admin', 'Admin', 'Ishlab chiqarish ustasi', 'PRODUCTION_MASTER', 'SUPERADMIN', 'ADMIN']:

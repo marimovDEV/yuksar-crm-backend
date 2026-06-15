@@ -16,7 +16,7 @@ class ExpenseCategorySerializer(serializers.ModelSerializer):
         model = ExpenseCategory
         fields = '__all__'
         
-    def get_children(self, obj):
+    def get_children(self, obj) -> list:
         if obj.children.exists():
             return ExpenseCategorySerializer(obj.children.all(), many=True).data
         return []

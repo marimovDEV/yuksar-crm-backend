@@ -78,7 +78,7 @@ class User(AbstractUser):
         return f"{self.full_name} ({self.username})"
 
     @property
-    def all_permissions(self):
+    def all_permissions(self) -> list:
         """Returns union of role permissions and custom overrides."""
         perms = set()
         if self.role_obj:

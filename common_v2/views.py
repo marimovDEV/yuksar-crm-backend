@@ -6,13 +6,15 @@ from datetime import timedelta
 from .models import AuditLog, Notification
 from .serializers import AuditLogSerializer, NotificationSerializer
 from accounts.models import User
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, get_user_role_name
 
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Notification.objects.none()
         return Notification.objects.filter(user=self.request.user)
 
     @action(detail=False, methods=['post'])
@@ -117,6 +119,8 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return SupportTicket.objects.none()
         user = self.request.user
         if user.is_superuser or get_user_role_name(user) in ['Bosh Admin', 'Admin']:
             return SupportTicket.objects.all()

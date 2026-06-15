@@ -156,3 +156,68 @@ class IsAdminOrAccountant(permissions.BasePermission):
     def has_permission(self, request, view):
         return IsAdmin().has_permission(request, view) or IsAccountant().has_permission(request, view)
 
+
+class IsDirector(permissions.BasePermission):
+    """Direktor — read-only access to analytics, reports, alerts, KPI."""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.is_superuser:
+            return True
+        return has_any_role(request.user,
+            'Bosh Admin', 'Admin', 'Direktor',
+            'SUPERADMIN', 'ADMIN', 'DIRECTOR'
+        )
+
+
+class IsAdminOrDirector(permissions.BasePermission):
+    """Admin yoki Direktor — analytics, reports, alerts."""
+    def has_permission(self, request, view):
+        return IsAdmin().has_permission(request, view) or IsDirector().has_permission(request, view)
+
+
+class IsAdminOrDirectorOrAccountant(permissions.BasePermission):
+    """Admin, Direktor yoki Buxgalter — reports va analytics."""
+    def has_permission(self, request, view):
+        return (
+            IsAdmin().has_permission(request, view)
+            or IsDirector().has_permission(request, view)
+            or IsAccountant().has_permission(request, view)
+        )
+
+
+class IsQualityController(permissions.BasePermission):
+    """QC Inspektor — quality control access."""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.is_superuser:
+            return True
+        return has_any_role(request.user,
+            'Bosh Admin', 'Admin', 'QC inspektor', 'Sifat nazoratchi',
+            'SUPERADMIN', 'ADMIN', 'QC_INSPECTOR'
+        )
+
+
+class IsTechnologist(permissions.BasePermission):
+    """Texnolog — recipes, production data, QC access."""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.is_superuser:
+            return True
+        return has_any_role(request.user,
+            'Bosh Admin', 'Admin', 'Texnolog',
+            'SUPERADMIN', 'ADMIN', 'TECHNOLOGIST'
+        )
+
+
+class IsProductionOrQCOrTechnologist(permissions.BasePermission):
+    """Production, QC yoki Texnolog — ishlab chiqarish ma'lumotlariga ruxsat."""
+    def has_permission(self, request, view):
+        return (
+            IsProductionRelated().has_permission(request, view)
+            or IsQualityController().has_permission(request, view)
+            or IsTechnologist().has_permission(request, view)
+        )
+

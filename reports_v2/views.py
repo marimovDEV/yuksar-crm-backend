@@ -12,14 +12,14 @@ from sales_v2.models import Invoice, SaleItem
 from cnc_v2.models import WasteProcessing
 from .models import ReportHistory
 from .serializers import ReportHistorySerializer
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, IsAdminOrDirectorOrAccountant, IsAdminOrDirector
 from common_v2.mixins import NoDeleteMixin
 from .services import generate_report_file, get_inventory_valuation, get_profitability_summary
 from .xlsx_services import generate_enterprise_xlsx
 from django.http import HttpResponse
 
 class EnterpriseXLSXExportView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         report_type = request.query_params.get('type', 'PROFIT_LOSS')
@@ -49,7 +49,7 @@ def _parse_start_date(raw_value, default_start):
 class ReportHistoryViewSet(NoDeleteMixin, viewsets.ModelViewSet):
     queryset = ReportHistory.objects.all().order_by('-created_at')
     serializer_class = ReportHistorySerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def perform_create(self, serializer):
         report = serializer.save(created_by=self.request.user, status='PENDING')
@@ -64,7 +64,7 @@ class ReportHistoryViewSet(NoDeleteMixin, viewsets.ModelViewSet):
         return FileResponse(report.file_path.open('rb'), as_attachment=True, filename=filename)
 
 class GeneralAnalyticsView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         today = timezone.now().date()
@@ -148,7 +148,7 @@ class GeneralAnalyticsView(APIView):
         })
 
 class ProfitabilityDetailView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         items = SaleItem.objects.select_related('invoice', 'product', 'production_batch').order_by('-invoice__date')[:50]
@@ -168,7 +168,7 @@ class ProfitabilityDetailView(APIView):
         return Response(data)
 
 class RawMaterialReportView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         report = RawMaterialBatch.objects.values('supplier__name', 'supplier_name').annotate(
@@ -185,7 +185,7 @@ class RawMaterialReportView(APIView):
         ])
 
 class ProductionEfficiencyView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         report = Zames.objects.all().aggregate(
@@ -199,7 +199,7 @@ class ProductionEfficiencyView(APIView):
         return Response(report)
 
 class WarehouseBalanceView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         balances = Stock.objects.values('warehouse__name', 'material__name').annotate(
@@ -215,7 +215,7 @@ class WarehouseBalanceView(APIView):
         ])
 
 class SalesReportView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         report = Invoice.objects.exclude(status='CANCELLED').aggregate(

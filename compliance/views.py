@@ -64,7 +64,7 @@ class AttendanceSerializer(drf_serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('recorded_by',)
 
-    def get_employee_name(self, obj):
+    def get_employee_name(self, obj) -> str:
         return obj.employee.full_name or obj.employee.username
 
 

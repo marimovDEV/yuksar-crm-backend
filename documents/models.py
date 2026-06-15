@@ -63,7 +63,7 @@ class Document(models.Model):
         super().save(*args, **kwargs)
 
     @property
-    def from_entity_name(self):
+    def from_entity_name(self) -> str:
         if self.from_warehouse:
             return self.from_warehouse.name
         if self.supplier_name:
@@ -71,7 +71,7 @@ class Document(models.Model):
         return "Noma'lum"
 
     @property
-    def to_entity_name(self):
+    def to_entity_name(self) -> str:
         if self.to_warehouse:
             return self.to_warehouse.name
         if self.client:

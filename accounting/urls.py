@@ -29,5 +29,6 @@ urlpatterns = [
 
     # Utilities
     path('vat-calculator/', VATCalculatorView.as_view(), name='vat-calculator'),
+    path('vat-calculate/', VATCalculatorView.as_view(), name='vat-calculate'),  # frontend alias
     path('summary/', AccountingSummaryView.as_view(), name='accounting-summary'),
 ]

@@ -150,8 +150,11 @@ def finish_cnc_job(job_id, finished_qty, waste_m3, operator=None):
             from production_v2.services import transition_block_status
             transition_block_status(job.input_finished_block, 'PACKAGED', user=operator or job.operator)
 
+        # AUTO-WORKFLOW: CNC COMPLETE → create FinishingJob automatically
+        _auto_create_finishing_job(job, operator=operator or job.operator)
+
         # Assuming 1m3 of EPS is ~15-20kg. Let's use 15kg as constant if not specified.
-        waste_kg = waste_m3 * 15 
+        waste_kg = waste_m3 * 15
         WasteProcessing.objects.create(
             job=job,
             waste_amount_kg=waste_kg,
@@ -172,3 +175,39 @@ def finish_cnc_job(job_id, finished_qty, waste_m3, operator=None):
             object_id=job.id
         )
         return job
+
+
+def _auto_create_finishing_job(cnc_job, operator=None):
+    """Auto-creates a FinishingJob when a CNCJob is completed."""
+    try:
+        from finishing_v2.models import FinishingJob
+        from common_v2.services import log_action
+        # Don't create duplicate
+        if FinishingJob.objects.filter(cnc_job=cnc_job).exists():
+            return
+        job_num = f"FIN-AUTO-{cnc_job.job_number}"
+        FinishingJob.objects.create(
+            job_number=job_num,
+            cnc_job=cnc_job,
+            input_finished_block=cnc_job.input_finished_block,
+            product=cnc_job.output_product,
+            quantity=cnc_job.quantity_finished or cnc_job.quantity_planned,
+            status='PENDING',
+            current_stage='ARMIRLASH',
+            operator=operator,
+        )
+        log_action(
+            user=operator,
+            action='CREATE',
+            module='Finishing',
+            description=f"CNC yakunlanganidan so'ng Pardozlash ishi avtomatik yaratildi: {job_num}",
+        )
+    except Exception as e:
+        from common_v2.services import log_action
+        log_action(
+            user=operator,
+            action='UPDATE',
+            module='Finishing',
+            description=f"Auto FinishingJob yaratishda xatolik: {str(e)}",
+            status='ERROR',
+        )

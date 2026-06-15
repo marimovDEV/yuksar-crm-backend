@@ -15,7 +15,10 @@ from .serializers import (
     InventoryAuditSerializer
 )
 from inventory.services import update_inventory
-from accounts.permissions import IsAdmin, IsWarehouseOperator, get_user_role_name
+from accounts.permissions import (
+    IsAdmin, IsWarehouseOperator, IsProductionRelated,
+    IsAdminOrDirectorOrAccountant, IsAdminOrDirector, get_user_role_name
+)
 from common_v2.services import log_action
 from transactions.models import Transaction
 from production_v2.services import update_block_location, transition_block_status
@@ -63,14 +66,16 @@ def _resolve_block_transfer_status(transfer):
     return 'READY'
 
 class SupplierViewSet(viewsets.ModelViewSet):
+    """Ta'minotchilar — faqat omborchi va admin."""
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsWarehouseOperator]
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
+    """Xarid buyurtmalari — faqat omborchi va admin."""
     queryset = PurchaseOrder.objects.all()
     serializer_class = PurchaseOrderSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsWarehouseOperator]
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -130,8 +135,8 @@ class MaterialViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            # All authenticated users can READ materials
-            return [permissions.IsAuthenticated()]
+            # Warehouse, production, technologist, QC, director, accounting can read materials
+            return [IsWarehouseOperator() | IsProductionRelated() | IsAdminOrDirectorOrAccountant()]
         # Only warehouse operators can create/update/delete
         return [IsWarehouseOperator()]
 
@@ -139,8 +144,8 @@ class RawMaterialBatchViewSet(viewsets.ModelViewSet):
     serializer_class = RawMaterialBatchSerializer
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            return [permissions.IsAuthenticated()]
+        if self.action in ['list', 'retrieve', 'by_qr']:
+            return [IsWarehouseOperator() | IsProductionRelated() | IsAdminOrDirectorOrAccountant()]
         return [IsWarehouseOperator()]
 
     def get_queryset(self):
@@ -206,8 +211,8 @@ class WarehouseViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            # All authenticated users can see warehouses
-            return [permissions.IsAuthenticated()]
+            # All operational roles need to see warehouse names (for transfers, forms, etc.)
+            return [IsWarehouseOperator() | IsProductionRelated() | IsAdminOrDirectorOrAccountant()]
         # Only warehouse operators can create/update/delete
         return [IsWarehouseOperator()]
 
@@ -229,8 +234,9 @@ class StockViewSet(viewsets.ReadOnlyModelViewSet):
     }
 
     def get_permissions(self):
-        # All authenticated users can view stock levels
-        return [permissions.IsAuthenticated()]
+        # Warehouse, production, director, accounting can view stock levels
+        # Sales, logistics, CNC, finishing do NOT need raw stock data
+        return [IsWarehouseOperator() | IsProductionRelated() | IsAdminOrDirectorOrAccountant()]
 
     def get_queryset(self):
         user = self.request.user

@@ -17,7 +17,7 @@ class LeadSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('created_at', 'updated_at', 'created_by')
 
-    def get_assigned_to_name(self, obj):
+    def get_assigned_to_name(self, obj) -> str:
         if obj.assigned_to:
             return obj.assigned_to.full_name or obj.assigned_to.username
         return None
@@ -33,7 +33,7 @@ class LeadListSerializer(serializers.ModelSerializer):
             'amount_expected', 'assigned_to_name', 'created_at',
         ]
 
-    def get_assigned_to_name(self, obj):
+    def get_assigned_to_name(self, obj) -> str:
         if obj.assigned_to:
             return obj.assigned_to.full_name or obj.assigned_to.username
         return None

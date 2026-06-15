@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from .models import WasteTask, WasteCategory
 from .serializers import WasteTaskSerializer, WasteCategorySerializer
 from .services import start_processing_waste, finish_processing_waste, accept_waste, get_waste_stats
-from accounts.permissions import IsWasteOperator
+from accounts.permissions import IsWasteOperator, IsProductionRelated, IsAdminOrDirector
 
 class WasteCategoryViewSet(viewsets.ModelViewSet):
     queryset = WasteCategory.objects.all()
@@ -12,7 +12,7 @@ class WasteCategoryViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [permissions.IsAuthenticated()]
+            return [IsWasteOperator() | IsProductionRelated() | IsAdminOrDirector()]
         return [IsWasteOperator()]
 
 class WasteTaskViewSet(viewsets.ModelViewSet):

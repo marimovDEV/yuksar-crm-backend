@@ -74,18 +74,18 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {'password': {'write_only': True}}
 
-    def get_role_display(self, obj):
+    def get_role_display(self, obj) -> str:
         if obj.role_obj:
              return obj.role_obj.name
-        return obj.role
+        return obj.role or ''
 
-    def get_effective_role(self, obj):
+    def get_effective_role(self, obj) -> str:
         return self.get_role_display(obj)
 
-    def get_assigned_warehouse_names(self, obj):
+    def get_assigned_warehouse_names(self, obj) -> list:
         return list(obj.assigned_warehouses.values_list('name', flat=True))
 
-    def get_responsibility_summary(self, obj):
+    def get_responsibility_summary(self, obj) -> str:
         role = self.get_effective_role(obj)
         summaries = {
             'Bosh Admin': "Tizim bo'ylab to'liq boshqaruv, nazorat va konfiguratsiya.",
@@ -100,7 +100,7 @@ class UserSerializer(serializers.ModelSerializer):
         }
         return summaries.get(role, "Rol bo'yicha vazifalar hali aniqlanmagan.")
 
-    def get_task_scope(self, obj):
+    def get_task_scope(self, obj) -> list:
         role = self.get_effective_role(obj)
         task_map = {
             'Bosh Admin': ['staff.manage', 'permissions.manage', 'reports.view', 'system.audit'],

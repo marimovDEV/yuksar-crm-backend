@@ -23,7 +23,7 @@ class AccountSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['balance', 'full_path', 'created_at', 'updated_at']
 
-    def get_children_count(self, obj):
+    def get_children_count(self, obj) -> int:
         return obj.children.count()
 
 

@@ -10,35 +10,41 @@ from .serializers import (
     FinancialTransactionSerializer, ClientBalanceSerializer,
     InternalTransferSerializer
 )
-from accounts.permissions import IsAdminOrSalesManager, IsAdmin
+from accounts.permissions import IsAdminOrSalesManager, IsAdmin, IsAccountant, IsAdminOrDirectorOrAccountant
 from common_v2.mixins import NoDeleteMixin
 from reports_v2.services import build_export_response_content
 
 class CashboxViewSet(NoDeleteMixin, viewsets.ModelViewSet):
+    """Kassa — buxgalter to'liq boshqaradi, sotuv menejeri o'qiydi."""
     queryset = Cashbox.objects.all()
     serializer_class = CashboxSerializer
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAdminOrSalesManager()]
-        return [IsAdmin()]
+            return [IsAdminOrSalesManager() | IsAccountant()]
+        return [IsAdmin() | IsAccountant()]
 
 class ExpenseCategoryViewSet(NoDeleteMixin, viewsets.ModelViewSet):
+    """Xarajat kategoriyalari — buxgalter boshqaradi."""
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCategorySerializer
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAdminOrSalesManager()]
-        return [IsAdmin()]
+            return [IsAdminOrSalesManager() | IsAccountant()]
+        return [IsAdmin() | IsAccountant()]
 
 class FinancialTransactionViewSet(NoDeleteMixin, viewsets.ModelViewSet):
+    """Moliyaviy tranzaksiyalar — buxgalter yaratadi/o'qiydi, sotuv menejeri o'qiydi."""
     queryset = FinancialTransaction.objects.all().order_by('-created_at')
     serializer_class = FinancialTransactionSerializer
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'create']:
-            return [IsAdminOrSalesManager()]
+        if self.action in ['list', 'retrieve']:
+            return [IsAdminOrSalesManager() | IsAccountant()]
+        if self.action == 'create':
+            # Buxgalter va admin tranzaksiya yaratishi mumkin
+            return [IsAdmin() | IsAccountant()]
         return [IsAdmin()]
 
     def perform_create(self, serializer):
@@ -52,24 +58,31 @@ class FinancialTransactionViewSet(NoDeleteMixin, viewsets.ModelViewSet):
         return qs
 
 class InternalTransferViewSet(NoDeleteMixin, viewsets.ModelViewSet):
+    """Ichki o'tkazmalar — buxgalter boshqaradi."""
     queryset = InternalTransfer.objects.all().order_by('-created_at')
     serializer_class = InternalTransferSerializer
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAdminOrSalesManager()]
-        return [IsAdmin()]
+            return [IsAdminOrSalesManager() | IsAccountant()]
+        return [IsAdmin() | IsAccountant()]
 
     def perform_create(self, serializer):
         serializer.save(performed_by=self.request.user)
 
 class ClientBalanceViewSet(NoDeleteMixin, viewsets.ModelViewSet):
+    """Mijoz balanslari — sotuv menejeri va buxgalter."""
     queryset = ClientBalance.objects.all()
     serializer_class = ClientBalanceSerializer
-    permission_classes = [IsAdminOrSalesManager]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAdminOrSalesManager() | IsAccountant()]
+        return [IsAdmin() | IsAccountant()]
 
 class FinanceAnalyticsView(views.APIView):
-    permission_classes = [IsAdminOrSalesManager]
+    """Moliya analitikasi — buxgalter va direktor ko'radi."""
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         today = timezone.now().date()
@@ -128,7 +141,8 @@ class FinanceAnalyticsView(views.APIView):
 
 
 class FinanceExportView(views.APIView):
-    permission_classes = [IsAdminOrSalesManager]
+    """Moliya eksporti — faqat buxgalter va admin."""
+    permission_classes = [IsAdminOrDirectorOrAccountant]
 
     def get(self, request):
         file_format = request.query_params.get('file_format') or request.query_params.get('export_format', 'PDF')

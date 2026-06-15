@@ -1,8 +1,8 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from accounts.permissions import IsAdmin, IsAccountant
 from .models import PayrollRecord
 from .serializers import PayrollSerializer
 
@@ -10,7 +10,7 @@ from .serializers import PayrollSerializer
 class PayrollViewSet(viewsets.ModelViewSet):
     queryset = PayrollRecord.objects.select_related('employee').all()
     serializer_class = PayrollSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin | IsAccountant]
 
     def get_queryset(self):
         qs = super().get_queryset()

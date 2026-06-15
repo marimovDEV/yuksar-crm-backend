@@ -1,14 +1,14 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsAdmin, IsSalesManager
 from .models import Lead, LeadActivity
 from .serializers import LeadSerializer, LeadListSerializer, LeadActivitySerializer
 
 
 class LeadViewSet(viewsets.ModelViewSet):
     queryset = Lead.objects.all().order_by('-created_at')
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin | IsSalesManager]
 
     def get_serializer_class(self):
         if self.action == 'list':

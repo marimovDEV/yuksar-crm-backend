@@ -116,7 +116,7 @@ class BunkerLoadViewSet(viewsets.ModelViewSet):
     permission_classes = [IsProductionOperator]
 
 class BlockProductionViewSet(viewsets.ModelViewSet):
-    queryset = BlockProduction.objects.all().order_by('-date', '-id')
+    queryset = BlockProduction.objects.select_related('zames', 'warehouse').order_by('-date', '-id')
     serializer_class = BlockProductionSerializer
     permission_classes = [IsProductionOperator]
     filterset_fields = ['status', 'warehouse']
@@ -387,7 +387,7 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
     permission_classes = [IsProductionRelated]
 
 class FinishedBlockViewSet(viewsets.ModelViewSet):
-    queryset = FinishedBlock.objects.all().order_by('-created_at')
+    queryset = FinishedBlock.objects.select_related('lot', 'warehouse').order_by('-created_at')
     serializer_class = FinishedBlockSerializer
     permission_classes = [IsProductionOperator]
     filterset_fields = ['lot', 'status', 'classification', 'block_id']
